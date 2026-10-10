@@ -1,0 +1,41 @@
+{
+  "_about": [
+    "Argument-tainting policy per AgentDojo suite: what a developer of each agent would set in policy_config.yaml.",
+    "consequential_tools: tools whose arguments must not repeat a value the agent read in untrusted content.",
+    "sensitive_params: the arguments checked, chosen as the ones that decide where data or money goes.",
+    "Written once from the tool signatures, not tuned on results. The arms with tainting load the entry for their suite; every other arm sets consequential_tools to [], which switches tainting off."
+  ],
+  "workspace": {
+    "consequential_tools": ["send_email", "share_file", "create_calendar_event", "add_calendar_event_participants"],
+    "sensitive_params": {
+      "send_email": ["recipients", "cc", "bcc"],
+      "share_file": ["email"],
+      "create_calendar_event": ["participants"],
+      "add_calendar_event_participants": ["participants"]
+    }
+  },
+  "travel": {
+    "consequential_tools": ["send_email", "create_calendar_event"],
+    "sensitive_params": {
+      "send_email": ["recipients", "cc", "bcc"],
+      "create_calendar_event": ["participants"]
+    }
+  },
+  "banking": {
+    "consequential_tools": ["send_money", "schedule_transaction", "update_scheduled_transaction"],
+    "sensitive_params": {
+      "send_money": ["recipient"],
+      "schedule_transaction": ["recipient"],
+      "update_scheduled_transaction": ["recipient"]
+    }
+  },
+  "slack": {
+    "consequential_tools": ["send_direct_message", "send_channel_message", "invite_user_to_slack", "post_webpage"],
+    "sensitive_params": {
+      "send_direct_message": ["body"],
+      "send_channel_message": ["body"],
+      "invite_user_to_slack": ["user_email"],
+      "post_webpage": ["url"]
+    }
+  }
+}

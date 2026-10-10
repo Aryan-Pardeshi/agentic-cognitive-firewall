@@ -1,3 +1,6 @@
 .bin/
 cache/
 __pycache__/
+.venv/
+results/*/work/
+results/*/records.jsonl

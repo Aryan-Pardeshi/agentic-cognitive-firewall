@@ -7,7 +7,7 @@ results.
 | Directory | Benchmark | What it measures | Status |
 |---|---|---|---|
 | [`injecagent/`](injecagent/) | InjecAgent | Attack success rate of a live LLM agent against indirect prompt injection, with and without ACF in the loop | Working; pilot run done |
-| [`agentdojo/`](agentdojo/) | AgentDojo | Benign utility, utility under attack and ASR, the security-and-utility trade-off, and the basis for comparison with CaMeL and Progent | Scaffold; upstream adapter to write |
+| [`agentdojo/`](agentdojo/) | AgentDojo | Benign utility, utility under attack and ASR, the security-and-utility trade-off, and the basis for comparison with CaMeL and Progent | Working: model-free replay run; live-agent mode ready, not yet run |
 | [`asb/`](asb/) | Agent Security Bench | Five attack classes across all four enforcement points, and which hook intercepts which class | Scaffold; upstream adapter to write |
 | [`overhead/`](overhead/) | Runtime overhead | Latency and throughput ACF adds, from single sidecar steps up to a Python SDK hook call | Working; full run done |
 | [`common/`](common/) | — | Shared plumbing: pinned downloads, sidecar startup, arms, provenance, result writing | Working |

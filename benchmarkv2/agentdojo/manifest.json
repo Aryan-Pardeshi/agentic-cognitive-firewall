@@ -6,7 +6,7 @@
   "license": "MIT",
   "package": {
     "name": "agentdojo",
-    "version": null,
+    "version": "0.1.35",
     "latest_seen": "0.1.35",
     "latest_seen_released": "2025-10-27",
     "requires_python": ">=3.10",
@@ -16,15 +16,39 @@
   "upstream_cli": {
     "entrypoint": "python -m agentdojo.scripts.benchmark",
     "example": "python -m agentdojo.scripts.benchmark -s workspace -ut user_task_0 --model gpt-4o-2024-05-13 --defense tool_filter --attack tool_knowledge",
-    "defenses_seen": ["tool_filter"],
-    "attacks_seen": ["tool_knowledge"],
+    "defenses_seen": [
+      "tool_filter"
+    ],
+    "attacks_seen": [
+      "important_instructions",
+      "tool_knowledge"
+    ],
     "note": "Only the values quoted in the upstream README are listed. Run the entrypoint with --help against the pinned version for the full set, and record what you used in the run's provenance."
   },
-  "suites": null,
+  "suites": {
+    "workspace": {
+      "user_tasks": 40,
+      "injection_tasks": 14
+    },
+    "travel": {
+      "user_tasks": 20,
+      "injection_tasks": 7
+    },
+    "banking": {
+      "user_tasks": 16,
+      "injection_tasks": 9
+    },
+    "slack": {
+      "user_tasks": 21,
+      "injection_tasks": 5
+    }
+  },
   "files": {},
   "notes": [
-    "version is null until a release is pinned: set it, install that exact version, and the runner then refuses to run against a different one.",
-    "commit and files stay empty while the benchmark is used as an installed package. Pin them only if the runner starts fetching data files straight from the repository.",
-    "suites is null until enumerated from the pinned install, so the list recorded here matches the version actually measured."
-  ]
+    "version is pinned: the runner refuses to run against any other install. To move it, install the new version, rerun the tests and the replay, then update it here.",
+    "benchmark_version is the suite version passed to agentdojo's get_suites; v1.2.2 is the upstream CLI default in 0.1.35 and gives 949 attacked cases.",
+    "suites records the task counts enumerated from the pinned install at v1.2.2.",
+    "commit and files stay empty while the benchmark is used as an installed package."
+  ],
+  "benchmark_version": "v1.2.2"
 }

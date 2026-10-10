@@ -219,7 +219,7 @@ cd demo && docker compose up --build                  # six attack scenarios, no
 | [`examples/`](examples/) | Runnable scripts showing which rule fires for each kind of input |
 | [`demo/`](demo/) | A Docker demo of six attack scenarios |
 | [`benchmarks/`](benchmarks/) | Replays public benchmark payloads through ACF with no model (detector catch rates) |
-| [`benchmarkv2/`](benchmarkv2/) | Evaluations for the paper: runtime overhead, InjecAgent with a live agent, and AgentDojo and Agent Security Bench harnesses (scaffolds) |
+| [`benchmarkv2/`](benchmarkv2/) | Evaluations for the paper: runtime overhead, InjecAgent with a live agent, AgentDojo (model-free replay and live agent), and an Agent Security Bench scaffold |
 | [`docs/`](docs/) | Architecture, design notes, threat analysis and the paper sources |
 | [`scripts/`](scripts/) | Utilities, such as measuring the semantic scanner's detection rate |
 
@@ -254,7 +254,9 @@ and Windows.
 |---|---|---|
 | Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/) | On a Windows laptop over named pipes: an SDK hook call costs about 0.25–0.3 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. Inside the sidecar a request takes about 0.2 ms, two-thirds of it policy evaluation. Large payloads cost more: a 64 KB chunk takes about 6 ms, mostly normalisation |
 | InjecAgent, live agent | [`benchmarkv2/injecagent/`](benchmarkv2/injecagent/) | Runs with any OpenAI-compatible model. The models tried so far resist InjecAgent on their own, so it measures model robustness more than ACF |
-| AgentDojo, Agent Security Bench | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/), [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harnesses scaffolded; upstream adapters to write |
+| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope and 12.2% with argument tainting added. The scope blocks no legitimate call; tainting blocks 97 of 2,374. Lexical detection never fires on this attack |
+| AgentDojo, live agent | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Harness ready; not yet run |
+| Agent Security Bench | [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harness scaffolded; upstream adapter to write |
 | Detector catch rates | [`benchmarks/`](benchmarks/) | Model-free replay of public datasets |
 
 How each benchmark is run is in [`benchmarkv2/README.md`](benchmarkv2/README.md).

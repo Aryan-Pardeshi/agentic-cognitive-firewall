@@ -98,3 +98,32 @@ def test_write_summary_and_records(tmp_path):
 def test_new_output_dir_is_timestamped_and_unique(tmp_path):
     first = harness.new_output_dir(tmp_path, "gpt-4o/arm")
     assert first.exists() and "gpt-4o-arm" in first.name
+
+
+def test_prepare_sidecar_config_applies_policy_overrides(tmp_path):
+    overrides = {
+        "consequential_tools": ["send_money"],
+        "sensitive_params": {"send_money": ["recipient"]},
+    }
+    skip = {"tool_param_scan_skip": {"send_money": {"subject": ["shell_metacharacter"]}}}
+    config = harness.prepare_sidecar_config(tmp_path / "run", ("send_money",), overrides, skip)
+    config_text = config.read_text(encoding="utf-8")
+    assert 'tool_param_scan_skip: {"send_money": {"subject": ["shell_metacharacter"]}}' in config_text
+    assert "calculator:" not in config_text and "memory_key_allowlist:" in config_text
+    text = (tmp_path / "run" / "policies" / "v1" / "data" / "policy_config.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert 'consequential_tools: ["send_money"]' in text
+    assert 'sensitive_params: {"send_money": ["recipient"]}' in text
+    # The shipped list items went with the key, and the keys around it survive.
+    assert "transfer_funds" not in text
+    assert "signal_weights:" in text and "trusted_tools:" in text
+
+
+def test_replace_top_level_yaml_value_requires_the_key():
+    with pytest.raises(RuntimeError):
+        harness.replace_top_level_yaml_value("a: 1\n", "missing", [])
+
+
+def test_taint_is_off_in_every_shared_arm():
+    assert not any(arm.taint for arm in harness.ARMS.values())

@@ -68,11 +68,15 @@ class Arm:
     gate:   check tool calls through on_tool_call. None disables the check,
             "global" allows every tool the benchmark uses, and "task" allows
             only the tools the current task needs (least privilege).
+    taint:  block consequential tool calls whose arguments repeat a value the
+            agent read in untrusted content. Needs sessions, so only runners
+            that use them offer arms with it.
     """
 
     name: str
     detect: bool
     gate: str | None
+    taint: bool = False
 
 
 # Keep `none` first: arms whose agent prompts are identical can share cached
@@ -170,11 +174,32 @@ def replace_top_level_yaml_list(text: str, key: str, values: list[str]) -> str:
     return updated
 
 
-def prepare_sidecar_config(dest: Path, allowlist: tuple[str, ...]) -> Path:
-    """Copy the shipped config and policies, changing only tool_allowlist.
+def replace_top_level_yaml_value(text: str, key: str, value: Any) -> str:
+    """Replace a top-level key, with any indented lines under it, by `key: <JSON>`.
+
+    YAML reads JSON, so this works for lists and mappings alike. Comments
+    indented under the key go with it.
+    """
+    pattern = re.compile(rf"^{re.escape(key)}:[^\n]*(?:\n[ \t]+[^\n]*)*", re.MULTILINE)
+    replacement = f"{key}: {json.dumps(value)}"
+    updated, count = pattern.subn(lambda _: replacement, text, count=1)
+    if count != 1:
+        raise RuntimeError(f"could not replace {key} in the benchmark config")
+    return updated
+
+
+def prepare_sidecar_config(dest: Path, allowlist: tuple[str, ...],
+                           policy_overrides: dict[str, Any] | None = None,
+                           config_overrides: dict[str, Any] | None = None) -> Path:
+    """Copy the shipped config and policies, changing only tool_allowlist, the
+    policy_config.yaml keys in policy_overrides and the sidecar.yaml keys in
+    config_overrides.
 
     Everything else about the enforcement configuration stays as shipped, so a
-    run measures the product rather than a benchmark-specific setup.
+    run measures the product rather than a benchmark-specific setup. Overrides
+    are for the deployment-specific keys a developer is meant to set, such as
+    consequential_tools or tool_param_scan_skip, and a runner that uses them
+    records them.
     """
     dest = Path(dest)
     config_dir = dest / "config"
@@ -182,21 +207,21 @@ def prepare_sidecar_config(dest: Path, allowlist: tuple[str, ...]) -> Path:
     config_dir.mkdir(parents=True)
     shutil.copytree(REPO_ROOT / "policies" / "v1", policy_dir)
     sidecar_config = config_dir / "sidecar.yaml"
-    sidecar_config.write_text(
-        replace_top_level_yaml_list(
-            (REPO_ROOT / "config" / "sidecar.yaml").read_text(encoding="utf-8"),
-            "tool_allowlist",
-            list(allowlist),
-        ),
-        encoding="utf-8",
+    config_text = replace_top_level_yaml_list(
+        (REPO_ROOT / "config" / "sidecar.yaml").read_text(encoding="utf-8"),
+        "tool_allowlist",
+        list(allowlist),
     )
+    for key, value in (config_overrides or {}).items():
+        config_text = replace_top_level_yaml_value(config_text, key, value)
+    sidecar_config.write_text(config_text, encoding="utf-8")
     policy_config = policy_dir / "data" / "policy_config.yaml"
-    policy_config.write_text(
-        replace_top_level_yaml_list(
-            policy_config.read_text(encoding="utf-8"), "tool_allowlist", list(allowlist)
-        ),
-        encoding="utf-8",
+    text = replace_top_level_yaml_list(
+        policy_config.read_text(encoding="utf-8"), "tool_allowlist", list(allowlist)
     )
+    for key, value in (policy_overrides or {}).items():
+        text = replace_top_level_yaml_value(text, key, value)
+    policy_config.write_text(text, encoding="utf-8")
     return sidecar_config
 
 
@@ -266,7 +291,7 @@ class FirewallFactory:
 
 
 class SidecarPool:
-    """Starts one sidecar per distinct tool allowlist, on demand.
+    """Starts one sidecar per distinct tool allowlist and policy overrides, on demand.
 
     A task-scoped arm needs a different allowlist per task, so the pool keeps
     one sidecar per allowlist and ACF enforces the list itself, rather than the
@@ -281,17 +306,22 @@ class SidecarPool:
         self.name = name
         self.key_hex = key_hex
         self.lock = threading.Lock()
-        self.sidecars: dict[tuple[str, ...], dict[str, Any]] = {}
+        self.sidecars: dict[tuple[tuple[str, ...], str], dict[str, Any]] = {}
 
-    def socket_for(self, allowlist: tuple[str, ...]) -> str:
+    def socket_for(self, allowlist: tuple[str, ...],
+                   policy_overrides: dict[str, Any] | None = None,
+                   config_overrides: dict[str, Any] | None = None) -> str:
+        overrides = {"policy": policy_overrides or {}, "config": config_overrides or {}}
+        key = (allowlist, json.dumps(overrides, sort_keys=True))
         with self.lock:
-            if allowlist not in self.sidecars:
-                self.sidecars[allowlist] = self._start(allowlist, len(self.sidecars))
-            return self.sidecars[allowlist]["socket_path"]
+            if key not in self.sidecars:
+                self.sidecars[key] = self._start(allowlist, overrides, len(self.sidecars))
+            return self.sidecars[key]["socket_path"]
 
-    def _start(self, allowlist: tuple[str, ...], number: int) -> dict[str, Any]:
+    def _start(self, allowlist: tuple[str, ...], overrides: dict[str, Any],
+               number: int) -> dict[str, Any]:
         dest = self.work_dir / f"sidecar-{number:02d}"
-        config = prepare_sidecar_config(dest, allowlist)
+        config = prepare_sidecar_config(dest, allowlist, overrides["policy"], overrides["config"])
         socket_path = (
             rf"\\.\pipe\acf_{self.name}_{os.getpid()}_{number}"
             if IS_WINDOWS
@@ -313,6 +343,8 @@ class SidecarPool:
         )
         entry: dict[str, Any] = {
             "allowlist": list(allowlist),
+            "policy_overrides": overrides["policy"],
+            "config_overrides": overrides["config"],
             "socket_path": socket_path,
             "process": process,
             "log": log,
@@ -345,7 +377,9 @@ class SidecarPool:
     def describe(self) -> list[dict[str, Any]]:
         with self.lock:
             return [
-                {"allowlist": entry["allowlist"], "preflight": entry.get("preflight")}
+                {"allowlist": entry["allowlist"], "policy_overrides": entry["policy_overrides"],
+                 "config_overrides": entry["config_overrides"],
+                 "preflight": entry.get("preflight")}
                 for entry in self.sidecars.values()
             ]
 

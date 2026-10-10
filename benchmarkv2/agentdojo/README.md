@@ -1,113 +1,160 @@
 # AgentDojo with ACF in the agent loop
 
-**Status: scaffold.** The plumbing works and `--dry-run` runs today. Three
-functions in `run_agentdojo.py` still need the upstream adapter:
-`available_suites`, `build_pipeline` and `run_case`. Each raises
-`NotImplementedError` naming what to write.
-
-## What it measures and why
-
 AgentDojo scores both sides of a defence on the same tasks:
 
-- **benign utility** — the agent finishes the user's task with no attack present
-- **utility under attack** — it still finishes the task while under attack
-- **attack success rate (ASR)** — the injected task succeeds
+- **benign utility**: the agent finishes the user's task with no attack present
+- **utility under attack**: it still finishes the task while under attack
+- **attack success rate (ASR)**: the injected task succeeds
 
-Utility under attack is the number a detector-only evaluation cannot produce: a
-firewall that blocks everything scores a perfect ASR and useless utility. This
-is also the benchmark CaMeL and Progent report on, so it is where ACF can be
-compared with prior system-level defences. It backs §eval-agentdojo.
+It is the benchmark Progent, CaMeL and FIDES report on, so it is where ACF can
+be compared with other system-level defences. Its injection tasks also misuse
+tools the user's task needs (`send_money`, `send_email`), which a tool-name
+allowlist cannot stop. It backs §eval-agentdojo.
+
+The runner is written against **agentdojo 0.1.35**, suites **v1.2.2**: 97 user
+tasks and 949 attacked cases across `workspace`, `travel`, `banking` and
+`slack`.
+
+## Two modes
+
+| | `--mode replay` (default) | `--mode agent` |
+|---|---|---|
+| Model | none | a real one, through an OpenAI-compatible endpoint |
+| Agent | a worst-case agent: replays the reference tool calls, and obeys any injected instruction it can read | AgentDojo's default tool-calling pipeline |
+| Question | When an attack reaches ACF, is it stopped, and by which enforcement point? What legitimate work is blocked? | How much safer is a real agent with ACF, and what does it cost in task success? |
+| Cost | about 5 minutes, deterministic | one model run per case and arm |
+
+**Replay** is the model-independent result. For each case the agent makes the
+user task's ground-truth calls in order. The first time the injected
+instruction is readable in a tool result, after ACF has screened it, the agent
+makes the injection task's ground-truth calls, then carries on. A call ACF
+blocks does not run. Attack success is then ACF's residual risk with no help
+from the model; a real model can only do better on security.
+
+**Agent** runs the upstream pipeline with ACF added at three points: the user's
+prompt (`on_prompt`), each tool call before it runs (`on_tool_call`), and each
+tool result before the model reads it (`on_tool_result`). A blocked call
+returns an error to the model.
+
+Both modes score with the suite's own utility and security checks, after
+enforcement. Calls ACF blocked are left out of the trace those checks read.
 
 ## Arms
 
-Arms are shared across the benchmarkv2 benchmarks and defined in
-[`../common/harness.py`](../common/harness.py).
+Every ACF arm runs each case in its own session.
 
-| Arm | `on_context` on tool results | `on_tool_call` on tool calls |
-|---|---|---|
-| `none` | no | no |
-| `gate-global` | no | yes, allowlist = every tool in the suite |
-| `gate-task` | no | yes, allowlist = only the task's own tools |
-| `detect` | yes | no |
-| `full-global` | yes | yes, global allowlist |
-| `full-task` | yes | yes, task allowlist |
+| Arm | Tool results screened | Tool calls checked | Argument tainting |
+|---|---|---|---|
+| `none` | no | no | no |
+| `gate-global` | no | allowlist = every tool in the suite | no |
+| `gate-task` | no | session scope = the task's own tools | no |
+| `detect` | yes | no | no |
+| `full-global` | yes | suite allowlist | no |
+| `full-task` | yes | task scope | no |
+| `full-global-taint` | yes | suite allowlist | yes |
+| `full-task-taint` | yes | task scope | yes |
 
-Report both allowlist scopes and say which is which. A global allowlist lets the
-benchmark supply both the tasks and the permitted tool names, which flatters the
-result. A task allowlist is least privilege, a stronger result, but it assumes
-each task's tools are known in advance.
+- **Task scope** is declared through the SDK, `firewall.session(allowed_tools=...)`,
+  so the sidecar enforces it. The tools are the ones the task's reference
+  solution uses. That is least privilege, and it assumes the task's tools are
+  known in advance; say so when reporting it.
+- **Argument tainting** blocks a consequential tool call whose argument repeats
+  a value the agent read in a tool result. Which tools and arguments count is
+  the developer's policy, in [`domain_policies.json`](domain_policies.json):
+  one entry per suite, written from the tool signatures. Arms without tainting
+  set `consequential_tools: []`.
 
-## Prerequisites
+## Deployment settings
 
-- Go, for building the sidecar, and Python 3.10+.
-- `pip install 'agentdojo==<pinned version>'`. Add the `transformers` extra only
-  if a run compares against upstream's own prompt-injection detector.
-- An API key for the agent model, in the environment of the process that runs
-  the command.
-- The SDK's `[scanners]` extra, for `--semantic tfidf` or
-  `--semantic sentence-transformer`.
+Two things differ from the shipped configuration, in every ACF arm, and both
+are recorded in `summary.json`:
 
-## Pin the version first
+- `tool_allowlist` is the suite's tools.
+- The shell-metacharacter check on tool arguments is skipped
+  (`tool_param_scan_skip`). It reads every string argument, and none of these
+  tools runs a shell, so it misfires on prose: with it on, 114 legitimate Slack
+  calls are blocked for a `;` or `&` in a message. `--shipped-param-scan` keeps
+  it on, to measure that.
 
-`manifest.json` ships with `package.version` set to `null`, and the runner
-refuses to run until it is pinned. Install the version you intend to measure,
-put that exact string in `manifest.json`, and the runner then refuses to run
-against any other install. Latest release seen upstream: 0.1.35 (2025-10-27).
-Record the suites and the `--attack` value in the run's provenance, which the
-runner does for you.
+## Setup
+
+```sh
+python -m venv benchmarkv2/agentdojo/.venv
+benchmarkv2/agentdojo/.venv/Scripts/python -m pip install "agentdojo==0.1.35" pytest   # bin/ on Linux and macOS
+```
+
+`manifest.json` pins the version and the runner refuses any other. Go is needed
+to build the sidecar. Agent mode reads `OPENAI_API_KEY`; with `--base-url` any
+value works for a local server.
 
 ## Running
 
+Use the venv's Python for everything below.
+
 ```sh
-# 1. Sidecar side only: builds the sidecar, starts it, runs the preflight
-#    controls, makes no model calls. Run this first.
+# Sidecar only: build, start, preflight. No AgentDojo needed.
 python benchmarkv2/agentdojo/run_agentdojo.py --dry-run --build-sidecar
 
-# 2. Pilot: a few user tasks on one suite, one attack, two arms.
-python benchmarkv2/agentdojo/run_agentdojo.py --suites workspace --limit 5 --arms none,full-global
+# Replay, all suites and arms.
+python benchmarkv2/agentdojo/run_agentdojo.py --mode replay
 
-# 3. Full run: every suite, the arms the paper reports.
-python benchmarkv2/agentdojo/run_agentdojo.py --arms none,detect,gate-global,full-global,full-task
+# Agent mode pilot: one suite, three user tasks, two arms.
+python benchmarkv2/agentdojo/run_agentdojo.py --mode agent --model gemma4 \
+    --base-url http://localhost:8000/v1 --suites banking --limit 3 --arms none,full-task-taint
 
-# Lexical vs lexical+semantic detection
-python benchmarkv2/agentdojo/run_agentdojo.py --arms detect,full-task --semantic tfidf
+# Agent mode, full run.
+python benchmarkv2/agentdojo/run_agentdojo.py --mode agent --model gpt-4o-2024-05-13
+
+# Finish an interrupted run.
+python benchmarkv2/agentdojo/run_agentdojo.py --mode agent --model gemma4 --base-url ... \
+    --resume benchmarkv2/agentdojo/results/<run directory>
 ```
 
-`--suites all` uses whatever the pinned install registers. Check the upstream
-flags with `python -m agentdojo.scripts.benchmark --help`; its README documents
-`--defense tool_filter` and `--attack tool_knowledge`.
+Other flags: `--attack` (default `important_instructions`, the attack Progent
+and CaMeL report; `tool_knowledge` is the one FIDES uses), `--user-tasks`,
+`--injection-tasks`, `--no-benign`, `--workers`, `--semantic`,
+`--benchmark-version`.
 
-## Implementing the adapter
-
-1. **`available_suites`** — list the suites from the installed package instead
-   of hard-coding them, so the recorded set matches the version measured.
-2. **`build_pipeline`** — put ACF into the upstream pipeline. The ACF side is
-   already decided: every tool result the agent is about to read goes through
-   `harness.screen_observation(firewall, text)`, and every tool call the model
-   chooses goes through `harness.gate_tool_call(firewall, name, params)` before
-   it runs. ACF is a defence of the same kind as upstream's `--defense`
-   options, so it belongs at the same point in the pipeline. Confirm the class
-   names against the pinned version rather than trusting any list here; the
-   upstream docs site renders with JavaScript and its README does not cover
-   custom defences.
-3. **`run_case`** — run one user task with and without an injection task, and
-   fill in a record with the `RECORD_FIELDS` keys. Utility and attack success
-   must come from the suite's own checks, evaluated **after** enforcement, so a
-   tool call ACF blocked counts as an unsuccessful attack.
-
-Scoring, summaries and provenance are already written and covered by tests, so
-the adapter only has to produce records.
+The model server must support OpenAI tool calling. The injected text addresses
+the model by name; a model AgentDojo does not know is addressed as "Local
+model", as upstream does for its own local providers.
 
 ## Outputs
 
-`results/<UTC timestamp>-<model>/`:
+`results/<UTC timestamp>-<mode>-<model>/`:
 
-- `records.jsonl` — one line per (suite, user task, injection task, arm), with
-  every ACF verdict
-- `summary.json` — scores per arm and suite, sidecar preflights, provenance
-  (commit, file and binary hashes, platform, versions)
-- `summary.md` — the tables: per arm, then per suite
-- `work/` — the generated sidecar configs and logs
+- `records.jsonl`: one line per (suite, user task, injection task, arm), written
+  as each case finishes, with every ACF verdict
+- `summary.json`: scores per arm and suite, sidecar settings and preflights,
+  provenance (commit, file and binary hashes, versions)
+- `summary.md`: the tables
+- `work/`: the generated sidecar configs and logs. Each log line has the
+  signals behind a decision.
+
+## Reading the replay numbers
+
+- **ASR** under `none` is just under 100%, not 100%: a few injection tasks fail
+  their own check when their reference calls are replayed after the user's.
+- **Utility is a lower bound.** A case counts only if the suite's check passes
+  and none of the user's own tool results was blocked or sanitised. The
+  reference answer is not credible if the agent could not read its inputs.
+- **Utility under attack is low under `none`** because the injected calls ran
+  and changed the environment, which most utility checks reject.
+- **False blocks** counts the user's own calls that ACF blocked, over all of
+  the user's calls.
+- **Stopped by detect / gate** attributes each failed attack: the instruction
+  was hidden from the agent, or the agent tried and a call was blocked.
+- **Not replayed**: 9 injection tasks have no reference tool calls (the attack
+  is in the agent's answer, or upstream gives none), so replay covers 609 of
+  the 949 attacked cases. Agent mode covers all of them.
+
+## Limits
+
+- Replay's agent follows reference solutions, so it never takes a different
+  legitimate route or recovers from a blocked call. Task scope therefore shows
+  no false blocks in replay by construction. Agent mode measures that cost.
+- A tool call ACF returns SANITISE for runs with its original arguments.
+- The task scope comes from the benchmark's reference solutions.
 
 ## Tests
 
@@ -115,6 +162,6 @@ the adapter only has to produce records.
 python -m pytest benchmarkv2/agentdojo benchmarkv2/common
 ```
 
-The tests cover scoring, allowlist scope, the version check and the report. One
-test asserts the three adapters still raise `NotImplementedError`; when you
-implement them, that test should be replaced with tests of the real behaviour.
+`test_run_agentdojo.py` covers the guard, scoring and the report and needs no
+AgentDojo. `test_agentdojo_adapter.py` covers the plan, replay and the agent
+pipeline with a scripted model, and is skipped where AgentDojo is not installed.
