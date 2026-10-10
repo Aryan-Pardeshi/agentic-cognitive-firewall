@@ -1,22 +1,33 @@
 # ACF-SDK — v1 Rego Policy Templates
 
-Default policy templates for the four v1 hooks, mapped directly to the [ACF Policy Taxonomy Matrix](../../docs/acf_policy_matrix.pdf).
+Default policy templates for each hook, mapped to the [ACF Policy Taxonomy Matrix](../../docs/acf_policy_matrix.pdf).
 
 ## Structure
 
 ```
 policies/v1/
-├── prompt.rego          on_prompt hook policies
-├── prompt_test.rego     13 test cases
-├── context.rego         on_context hook policies
-├── context_test.rego    15 test cases
-├── tool.rego            on_tool_call hook policies
-├── tool_test.rego       12 test cases
-├── memory.rego          on_memory hook policies
-└── memory_test.rego     14 test cases
+├── prompt.rego             on_prompt hook policies
+├── context.rego            on_context hook policies
+├── tool.rego               on_tool_call: allowlist, destination, detection, task scope,
+│                           argument constraints, argument taint, threshold
+├── memory.rego             on_memory hook policies
+├── tool_result.rego        on_tool_result: score thresholds, trusted_tools
+├── task.rego               on_task: a session's scope may only narrow the global allowlist
+├── *_test.rego             unit tests, one file per policy; tool_scope_test.rego and
+│                           tool_taint_test.rego cover tool.rego's session gates
+└── data/
+    ├── policy_config.yaml       thresholds, allowlists, trusted_tools, consequential_tools,
+    │                            sensitive_params, signal weights
+    └── jailbreak_patterns.json  lexical pattern library
 ```
 
-**27 policy rules · 54 test cases · 100% v1 taxonomy coverage**
+The Rego tests here and in `policies/tests/` run under `go test` through
+`TestRegoPolicyTests` in `sidecar/internal/policy`, as well as with
+`make opa-test`.
+
+Sessions, task scope, tool output screening and argument tainting are
+described in [docs/application-policy-layer.md](../../docs/application-policy-layer.md).
+The coverage matrix below is for the original four hooks.
 
 ## Taxonomy Matrix Coverage
 

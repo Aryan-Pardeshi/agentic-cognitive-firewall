@@ -25,20 +25,28 @@ All policy evaluation happens in the sidecar. The agent cannot reach inside it.
 
 Hooks self-register into a registry map. The pipeline only calls whatever is registered at each execution point. Adding a new hook is purely additive — the pipeline, IPC layer, and sidecar core do not change.
 
-### v1 hooks (registered at startup)
+### Registered hooks
 
 | Hook | Fires when | Primary threat |
 |---|---|---|
 | `on_prompt` | User input arrives | Direct prompt injection — override system instructions |
 | `on_context` | RAG chunks injected | Indirect injection — malicious instructions in retrieved docs |
-| `on_tool_call` | Before tool executes | Tool abuse — unsafe tool or malicious parameters |
+| `on_tool_call` | Before tool executes | Tool abuse — unsafe tool, malicious parameters, or the attacker's values in a legitimate tool's arguments |
 | `on_memory` | Before memory read/write | Memory poisoning — malicious values in persistent state |
+| `on_tool_result` | After a tool returns, before the agent reads it | Indirect injection through tool output, told apart by the producing tool |
+| `on_task` | A session starts | — declares the session's task scope (allowed tools, trusted values, argument constraints) |
 
-### v2+ hooks (register without touching existing ones)
+In the sidecar each hook is one entry in `sidecar/internal/hooks`, naming its
+Rego package, provenance, OPA input builder and optional payload validator.
+`on_tool_result` and `on_task` were added that way, without changing the
+transport, the pipeline stages or the policy engine. See
+[application-policy-layer.md](application-policy-layer.md) for sessions, task
+scope, tool output screening and argument tainting.
+
+### Planned hooks (register without touching existing ones)
 
 | Hook | Fires when |
 |---|---|
-| `on_tool_result` | After tool returns |
 | `on_outbound` | Before response sent |
 | `on_subagent` | Before sub-agent spawned |
 | `on_startup` | Gateway initialisation |
@@ -59,6 +67,12 @@ safe   = firewall.on_prompt(user_msg)        # at message ingress
 result = firewall.on_context(docs)           # before RAG injection
 ok     = firewall.on_tool_call(name, params) # before tool execution
 safe   = firewall.on_memory(key, value)      # before memory write
+seen   = firewall.on_tool_result(tool, out)  # before the agent reads tool output
+
+# sessions: the same hooks, evaluated as one agent run with a task scope
+with firewall.session(allowed_tools=["search", "send_email"]) as s:
+    s.on_prompt(user_msg)
+    s.on_tool_call("send_email", {"to": "..."})
 ```
 
 ---
@@ -100,9 +114,19 @@ The risk context object is the single payload flowing through the entire PDP pip
 
 The `state` field was always in the schema — v1 just leaves it null. The policy engine checks `if state != null` before including historical score. Same policy files work in both versions without modification.
 
-### v2 state store
+### State store (implemented)
 
-A TTL-based in-memory map keyed by `session_id`. Hydrates the `state` field before the pipeline runs, then updates after the decision is returned.
+`sidecar/internal/state.TTLStore`, an in-memory map keyed by `session_id`. The
+session stage, right after validate, hydrates the `state` field for requests
+that name a session; a recorder updates the session after the decision.
+Sessionless requests keep a null `state`, and a `state` sent by the client is
+always discarded.
+
+What the store holds today, and what policies see as `input.state`, is the
+session's request counters, its declared task scope, and per-request argument
+taint findings, rather than the `prior_score` / `decay_factor` sketch above.
+Sessions expire after an idle TTL, and the number held is capped. See
+[application-policy-layer.md](application-policy-layer.md).
 
 ```
 state store ──hydrates──▶ risk context ──pipeline──▶ decision
@@ -277,4 +301,5 @@ Goal: auditable, testable, production-ready v1.
 - Deliverable: shippable v1 with all policies tested
 
 ### v2 (after v1 ships)
-`state/ttl_store.go` · `on_output` hook · accumulation policies · TypeScript SDK · memory hook split into `on_memory_write` / `on_memory_read`
+Done: `state/ttl_store.go`, sessions, `on_tool_result`, task scope and argument tainting (see [application-policy-layer.md](application-policy-layer.md)).
+Remaining: `on_output` hook · accumulation policies · TypeScript SDK · memory hook split into `on_memory_write` / `on_memory_read` · sidecar-signed memory integrity stamps
