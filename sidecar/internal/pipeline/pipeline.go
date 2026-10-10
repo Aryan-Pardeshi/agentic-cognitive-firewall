@@ -88,11 +88,19 @@ type Evaluator interface {
 	Evaluate(rc *riskcontext.RiskContext) (decision string, sanitiseTargets []string, err error)
 }
 
-// Pipeline runs the four enforcement stages in order.
+// Recorder sees each request after its decision, for example to update session
+// state. It runs for requests that reached the decision step, not for those a
+// stage hard-blocked in strict mode.
+type Recorder interface {
+	Record(rc *riskcontext.RiskContext, decision byte)
+}
+
+// Pipeline runs the enforcement stages in order.
 type Pipeline struct {
 	cfg       *config.Config
 	stages    []Stage
 	evaluator Evaluator // nil → threshold fallback (Phase 2 behaviour)
+	recorders []Recorder
 }
 
 // New constructs a Pipeline with no OPA evaluator (threshold fallback only).
@@ -105,6 +113,13 @@ func New(cfg *config.Config, stages []Stage) *Pipeline {
 // to obtain the final decision from OPA. Falls back to threshold if ev errors.
 func NewWithEvaluator(cfg *config.Config, stages []Stage, ev Evaluator) *Pipeline {
 	return &Pipeline{cfg: cfg, stages: stages, evaluator: ev}
+}
+
+// OnDecision adds r to the recorders that run after each decision, and returns
+// p so the call can be chained onto a constructor.
+func (p *Pipeline) OnDecision(r Recorder) *Pipeline {
+	p.recorders = append(p.recorders, r)
+	return p
 }
 
 // Run executes all pipeline stages against rc and returns a Result.
@@ -164,6 +179,10 @@ func (p *Pipeline) RunTraced(rc *riskcontext.RiskContext, tr *Trace) Result {
 		}
 	} else {
 		d = thresholdDecision(rc.Score, p.cfg.Thresholds)
+	}
+
+	for _, r := range p.recorders {
+		r.Record(rc, d)
 	}
 
 	return Result{

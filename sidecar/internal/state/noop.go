@@ -1,13 +1,12 @@
-// noop.go — v1 StateStore implementation.
-// Get always returns nil. Set is a no-op.
-// Wired in at startup for Phase 1 and Phase 2.
+// noop.go — the stateless StateStore.
+// Get always returns nil. Update is a no-op.
 package state
 
-// NoopStore is the v1 StateStore. Stateless — all sessions are equivalent.
+// NoopStore keeps no state: every request is evaluated on its own.
 type NoopStore struct{}
 
 // Get always returns nil.
-func (n *NoopStore) Get(_ string) any { return nil }
+func (n *NoopStore) Get(_ string) *Session { return nil }
 
-// Set is a no-op.
-func (n *NoopStore) Set(_ string, _ any) {}
+// Update does nothing.
+func (n *NoopStore) Update(_ string, _ func(*Session)) {}

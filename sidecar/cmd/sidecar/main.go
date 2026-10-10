@@ -17,6 +17,7 @@ import (
 	"github.com/acf-sdk/sidecar/internal/crypto"
 	"github.com/acf-sdk/sidecar/internal/pipeline"
 	"github.com/acf-sdk/sidecar/internal/policy"
+	"github.com/acf-sdk/sidecar/internal/state"
 	"github.com/acf-sdk/sidecar/internal/telemetry"
 	"github.com/acf-sdk/sidecar/internal/transport"
 )
@@ -82,13 +83,19 @@ func main() {
 			"and will score 0.0: %s", len(missing), strings.Join(missing, ", "))
 	}
 
-	// 6. Build the enforcement pipeline.
+	// 6. Build the enforcement pipeline. The session stage runs after validate
+	// so it only ever sees a known hook, and records each decision afterwards.
+	sessions := state.NewTTLStore(
+		time.Duration(cfg.Session.TTLSeconds)*time.Second, cfg.Session.MaxSessions)
+	defer sessions.Stop()
+	sessionStage := pipeline.NewSessionStage(sessions)
 	pl := pipeline.NewWithEvaluator(cfg, []pipeline.Stage{
 		pipeline.NewValidateStage(),
+		sessionStage,
 		pipeline.NewNormaliseStage(),
 		pipeline.NewScanStage(cfg, patterns.Entries),
 		pipeline.NewAggregateStage(cfg, eng),
-	}, eng)
+	}, eng).OnDecision(sessionStage)
 
 	mode := "strict"
 	if !cfg.Pipeline.StrictMode {

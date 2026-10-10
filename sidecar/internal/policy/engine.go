@@ -298,6 +298,12 @@ func buildInput(rc *riskcontext.RiskContext) map[string]any {
 		"session_id": rc.SessionID,
 	}
 
+	// Session state, when the request names a live session. The session stage
+	// fills it from the sidecar's store; a client-sent state never gets here.
+	if rc.State != nil {
+		input["state"] = rc.State
+	}
+
 	// Hook-specific fields extracted from rc.Payload.
 	if h, ok := hooks.Lookup(rc.HookType); ok && h.Input != nil {
 		h.Input(rc, input)

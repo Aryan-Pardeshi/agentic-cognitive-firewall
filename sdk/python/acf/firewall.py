@@ -22,7 +22,7 @@ import binascii
 import json
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .models import (
     ChunkResult,
@@ -31,6 +31,9 @@ from .models import (
     SanitiseResult,
 )
 from .transport import Transport, DEFAULT_SOCKET_PATH
+
+if TYPE_CHECKING:
+    from .session import Session
 
 logger = logging.getLogger(__name__)
 
@@ -147,15 +150,35 @@ class Firewall:
             logger.info("acf-sdk: semantic scanner enabled (%s backend, signal threshold %.2f)",
                         resolved_backend, self._semantic_signal_threshold)
 
+    # ── sessions ─────────────────────────────────────────────────────────────
+
+    def session(self, session_id: str | None = None) -> "Session":
+        """Start a session: hook calls the sidecar treats as one agent run.
+
+        Within a session the sidecar remembers earlier calls, so a policy can
+        decide on more than the single request in front of it. Use the
+        returned Session's hook methods in place of this Firewall's::
+
+            with firewall.session() as s:
+                s.on_prompt(user_msg)
+                s.on_tool_call("search", {"q": "..."})
+
+        session_id defaults to a random 128-bit hex string. A supplied ID must
+        be 1-128 characters from A-Z a-z 0-9 . _ : -, the same rule the
+        sidecar enforces.
+        """
+        from .session import Session
+        return Session(self, session_id)
+
     # ── v1 hook call sites ────────────────────────────────────────────────────
+    # These are sessionless: each call is evaluated on its own.
 
     def on_prompt(self, text: str) -> Decision | SanitiseResult:
         """Evaluate a user prompt before it enters the model context.
 
         Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult.
         """
-        payload = self._build_payload("on_prompt", text, provenance="user")
-        return self._send(payload)
+        return self._on_prompt(text, session_id="")
 
     def on_context(self, chunks: list[str]) -> list[ChunkResult]:
         """Evaluate RAG chunks before injection into the model context.
@@ -163,9 +186,33 @@ class Firewall:
         Each chunk is evaluated independently. Returns one ChunkResult per chunk.
         Chunks with a BLOCK decision have sanitised_text=None.
         """
+        return self._on_context(chunks, session_id="")
+
+    def on_tool_call(self, name: str, params: dict[str, Any]) -> Decision | SanitiseResult:
+        """Evaluate a tool call before the tool executes.
+
+        Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult.
+        """
+        return self._on_tool_call(name, params, session_id="")
+
+    def on_memory(self, key: str, value: str, op: str = "write") -> Decision | SanitiseResult:
+        """Evaluate a memory read or write before it is committed.
+
+        op: "write" (default) or "read".
+        Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult.
+        """
+        return self._on_memory(key, value, op, session_id="")
+
+    # ── hook implementations, shared with Session ────────────────────────────
+
+    def _on_prompt(self, text: str, *, session_id: str) -> Decision | SanitiseResult:
+        payload = self._build_payload("on_prompt", text, provenance="user", session_id=session_id)
+        return self._send(payload)
+
+    def _on_context(self, chunks: list[str], *, session_id: str) -> list[ChunkResult]:
         results = []
         for chunk in chunks:
-            payload  = self._build_payload("on_context", chunk, provenance="rag")
+            payload  = self._build_payload("on_context", chunk, provenance="rag", session_id=session_id)
             decision = self._send(payload)
             if isinstance(decision, SanitiseResult):
                 results.append(ChunkResult(
@@ -181,28 +228,25 @@ class Firewall:
                 ))
         return results
 
-    def on_tool_call(self, name: str, params: dict[str, Any]) -> Decision | SanitiseResult:
-        """Evaluate a tool call before the tool executes.
-
-        Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult.
-        """
+    def _on_tool_call(
+        self, name: str, params: dict[str, Any], *, session_id: str
+    ) -> Decision | SanitiseResult:
         payload = self._build_payload(
             "on_tool_call",
             {"name": name, "params": params},
             provenance="agent",
+            session_id=session_id,
         )
         return self._send(payload)
 
-    def on_memory(self, key: str, value: str, op: str = "write") -> Decision | SanitiseResult:
-        """Evaluate a memory read or write before it is committed.
-
-        op: "write" (default) or "read".
-        Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult.
-        """
+    def _on_memory(
+        self, key: str, value: str, op: str, *, session_id: str
+    ) -> Decision | SanitiseResult:
         payload = self._build_payload(
             "on_memory",
             {"key": key, "value": value, "op": op},
             provenance="agent",
+            session_id=session_id,
         )
         return self._send(payload)
 

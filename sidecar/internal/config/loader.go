@@ -52,6 +52,20 @@ type Config struct {
 	// where the policy engine hot-reloads them; a table here is ignored and
 	// main logs a warning, so a local override is never dropped silently.
 	DeprecatedSignalWeights map[string]float64 `yaml:"signal_weights"`
+
+	// Session controls the per-session state store.
+	Session SessionConfig `yaml:"session"`
+}
+
+// SessionConfig controls the per-session state store.
+type SessionConfig struct {
+	// TTLSeconds is how long a session's state survives without a request.
+	// Default 1800.
+	TTLSeconds int `yaml:"ttl_seconds"`
+	// MaxSessions caps how many sessions are held at once. At the cap, expired
+	// sessions are swept and then the least recently seen is evicted.
+	// Default 10000.
+	MaxSessions int `yaml:"max_sessions"`
 }
 
 // PipelineConfig controls pipeline execution behaviour.
@@ -176,10 +190,20 @@ func defaults() *Config {
 		},
 		ToolAllowlist:      []string{},
 		MemoryKeyAllowlist: []string{},
+		Session: SessionConfig{
+			TTLSeconds:  1800,
+			MaxSessions: 10000,
+		},
 	}
 }
 
 func validate(c *Config) error {
+	if c.Session.TTLSeconds <= 0 {
+		return errors.New("session.ttl_seconds must be positive")
+	}
+	if c.Session.MaxSessions <= 0 {
+		return errors.New("session.max_sessions must be positive")
+	}
 	if c.Thresholds.BlockScore < 0 || c.Thresholds.BlockScore > 1 {
 		return errors.New("thresholds.block_score must be between 0.0 and 1.0")
 	}

@@ -32,8 +32,9 @@ signal_weights:          # per-signal contribution to risk score
   # integrity
   hmac_invalid: 1.0           # always hard block
 
-  # request validation (emitted by the validate stage)
+  # request validation (emitted by the validate and session stages)
   validate:invalid_hook_type: 1.0
+  validate:invalid_session_id: 1.0
   validate:missing_provenance: 0.9
   validate:nil_payload: 1.0
 

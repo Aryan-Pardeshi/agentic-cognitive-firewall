@@ -1,13 +1,15 @@
 // Package state defines the StateStore interface and its implementations.
-// v1 uses noop.go (stateless). v2 swaps in ttl_store.go at startup injection.
-// The pipeline is unchanged between versions — it calls the interface only.
+// v1 used noop.go (stateless). v2 injects ttl_store.go at startup.
+// The pipeline calls the interface only.
 package state
 
-// StateStore is the interface for per-session state hydration.
-// v1 uses NoopStore. v2 injects TTLStore at startup — pipeline unchanged.
+// StateStore holds per-session state across hook calls.
 type StateStore interface {
-	// Get returns the stored state for sessionID, or nil if absent.
-	Get(sessionID string) any
-	// Set stores value for sessionID.
-	Set(sessionID string, value any)
+	// Get returns a copy of the session's state, or nil if the session is
+	// unknown or has expired.
+	Get(sessionID string) *Session
+	// Update applies fn to the session's state, creating the session if it does
+	// not exist, and renews its expiry. fn runs under the store's lock, so it
+	// must be quick and must not call back into the store.
+	Update(sessionID string, fn func(*Session))
 }
