@@ -48,5 +48,18 @@ type RiskContext struct {
 
 	// State is nil in v1. In v2 it is hydrated by the TTL state store before
 	// the pipeline runs and contains session history for stateful policies.
+	// It is sidecar-owned: the validate stage discards any value a client sends.
 	State any `json:"state"`
+
+	// ClaimedProvenance is the provenance the client sent. The validate stage
+	// replaces Provenance with the label the hooks registry assigns to the
+	// hook, so a client cannot pick its own trust weight. The claim is kept for
+	// audit only and never reaches policy. Internal; not serialised.
+	ClaimedProvenance string `json:"-"`
+
+	// ClientSignals holds the signals the client sent, e.g. from the SDK's
+	// semantic scanner. The validate stage moves them here and the aggregate
+	// stage merges back only categories with a configured weight, scored by
+	// that weight. Internal; not serialised.
+	ClientSignals []Signal `json:"-"`
 }

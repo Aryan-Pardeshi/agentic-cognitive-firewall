@@ -7,6 +7,11 @@
 //   - unknown or missing hook_type
 //   - empty provenance
 //   - nil payload
+//
+// It also takes the fields a client must not control out of the client's
+// hands: provenance is replaced by the label the hooks registry assigns to the
+// hook, client signals are set aside for the aggregate stage to vet, and score
+// and state, which the sidecar computes, are cleared.
 package pipeline
 
 import (
@@ -21,9 +26,16 @@ type ValidateStage struct{}
 func (v *ValidateStage) Name() string { return "validate" }
 
 // Run validates rc and emits a hard block signal if any required field is
-// missing or invalid. The stage does not mutate rc on success.
+// missing or invalid.
 func (v *ValidateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
-	if _, ok := hooks.Lookup(rc.HookType); !ok {
+	// Set the client's signals aside first, so on a rejected request the hard
+	// block signal below is the only signal policy sees.
+	rc.ClientSignals, rc.Signals = rc.Signals, nil
+	rc.Score = 0
+	rc.State = nil
+
+	h, ok := hooks.Lookup(rc.HookType)
+	if !ok {
 		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:invalid_hook_type"})
 		return true
 	}
@@ -35,6 +47,7 @@ func (v *ValidateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
 		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:nil_payload"})
 		return true
 	}
+	rc.ClaimedProvenance, rc.Provenance = rc.Provenance, h.Provenance
 	return false
 }
 

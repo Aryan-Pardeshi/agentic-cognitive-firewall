@@ -8,20 +8,20 @@ import (
 )
 
 func TestBuiltinHooksAreRegistered(t *testing.T) {
-	want := map[string]string{
-		"on_prompt":    "acf.policy.prompt",
-		"on_context":   "acf.policy.context",
-		"on_tool_call": "acf.policy.tool",
-		"on_memory":    "acf.policy.memory",
+	want := map[string][2]string{
+		"on_prompt":    {"acf.policy.prompt", "user"},
+		"on_context":   {"acf.policy.context", "rag"},
+		"on_tool_call": {"acf.policy.tool", "agent"},
+		"on_memory":    {"acf.policy.memory", "agent"},
 	}
-	for name, policy := range want {
+	for name, w := range want {
 		h, ok := Lookup(name)
 		if !ok {
 			t.Errorf("%s is not registered", name)
 			continue
 		}
-		if h.Policy != policy {
-			t.Errorf("%s policy = %q, want %q", name, h.Policy, policy)
+		if h.Policy != w[0] || h.Provenance != w[1] {
+			t.Errorf("%s = (%q, %q), want (%q, %q)", name, h.Policy, h.Provenance, w[0], w[1])
 		}
 	}
 	if _, ok := Lookup("on_unknown"); ok {
@@ -44,9 +44,10 @@ func TestAllIsSortedAndMatchesNames(t *testing.T) {
 
 func TestRegisterRejectsDuplicatesAndEmptyFields(t *testing.T) {
 	for _, h := range []Hook{
-		{Name: "on_prompt", Policy: "acf.policy.prompt"},
-		{Name: "", Policy: "acf.policy.x"},
-		{Name: "on_x", Policy: ""},
+		{Name: "on_prompt", Policy: "acf.policy.prompt", Provenance: "user"},
+		{Name: "", Policy: "acf.policy.x", Provenance: "x"},
+		{Name: "on_x", Policy: "", Provenance: "x"},
+		{Name: "on_x", Policy: "acf.policy.x", Provenance: ""},
 	} {
 		func() {
 			defer func() {

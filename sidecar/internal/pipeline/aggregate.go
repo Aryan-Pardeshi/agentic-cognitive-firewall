@@ -53,7 +53,11 @@ func (a *AggregateStage) Name() string { return "aggregate" }
 // fully-scored signals.
 // Always returns hardBlock=false — the dispatcher applies threshold logic.
 func (a *AggregateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
-	score := applySignalWeights(rc.Signals, a.weights.SignalWeights())
+	weights := a.weights.SignalWeights()
+	rc.Signals = append(rc.Signals, weightedClientSignals(rc.ClientSignals, weights)...)
+	rc.ClientSignals = nil
+
+	score := applySignalWeights(rc.Signals, weights)
 	score *= a.cfg.ProvenanceWeight(rc.Provenance)
 	score = clamp(score)
 
@@ -61,6 +65,24 @@ func (a *AggregateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
 
 	rc.Score = score
 	return false
+}
+
+// weightedClientSignals keeps the client's signals whose category has a
+// configured weight, with the score left for applySignalWeights to set from
+// that weight. A client-supplied score never survives, and a category with no
+// weight is dropped. Several policies read categories that nothing in the
+// sidecar emits — source_trust, low_trust_source, content_scan — and
+// context.rego halves the effective score on a high source_trust, so accepting
+// those from the client let it talk its own risk down. What remains can only
+// add risk.
+func weightedClientSignals(client []riskcontext.Signal, weights map[string]float64) []riskcontext.Signal {
+	var out []riskcontext.Signal
+	for _, s := range client {
+		if _, ok := weights[s.Category]; ok {
+			out = append(out, riskcontext.Signal{Category: s.Category})
+		}
+	}
+	return out
 }
 
 // applySignalWeights looks up each signal's weight, writes it back onto the

@@ -2,9 +2,11 @@
 // provenance field in RiskContext must never downgrade a verdict.
 //
 // Background: the SDK sets RiskContext.provenance inside the agent process, so
-// a compromised agent can supply any value. aggregate.go multiplies the risk
-// score by cfg.ProvenanceWeight(provenance). This test exhaustively checks
-// that no forged provenance reduces a BLOCK or SANITISE to something weaker.
+// a compromised agent can supply any value, and aggregate.go multiplies the
+// risk score by cfg.ProvenanceWeight(provenance). The validate stage now
+// replaces the claimed value with the label the hooks registry assigns to the
+// hook, so forgery has no effect by construction; this test keeps that true by
+// checking that no forged provenance reduces a BLOCK or SANITISE.
 package integration
 
 import (

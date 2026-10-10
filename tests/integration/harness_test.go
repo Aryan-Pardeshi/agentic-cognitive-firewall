@@ -48,6 +48,11 @@ type payloadCase struct {
 	Desired    string          `json:"desired,omitempty"`
 	Gap        string          `json:"gap,omitempty"`
 	Closed     bool            `json:"closed,omitempty"`
+	// Signals and State are sent as the client's signals and state. The corpus
+	// leaves them empty; the forgery probes set them to check the sidecar does
+	// not let a client lower its own verdict through them.
+	Signals []map[string]any `json:"signals,omitempty"`
+	State   map[string]any   `json:"state,omitempty"`
 }
 
 // isGap reports whether this case is a gap probe: one carrying a Desired verdict
@@ -141,14 +146,22 @@ func waitForSocket(path string, timeout time.Duration) bool {
 func send(t *testing.T, pc payloadCase) string {
 	t.Helper()
 
+	signals := []map[string]any{}
+	if pc.Signals != nil {
+		signals = pc.Signals
+	}
+	var state any
+	if pc.State != nil {
+		state = pc.State
+	}
 	body, err := json.Marshal(map[string]any{
 		"score":      0.0,
-		"signals":    []any{},
+		"signals":    signals,
 		"provenance": pc.Provenance,
 		"session_id": "",
 		"hook_type":  pc.HookType,
 		"payload":    pc.Payload,
-		"state":      nil,
+		"state":      state,
 	})
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)

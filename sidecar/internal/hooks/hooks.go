@@ -20,6 +20,10 @@ type Hook struct {
 	Name string
 	// Policy is the Rego package that decides this hook, e.g. "acf.policy.tool".
 	Policy string
+	// Provenance is the trust label requests on this hook get. The sidecar
+	// assigns it; the provenance a client claims is kept for audit only, so a
+	// client cannot choose its own trust weight.
+	Provenance string
 	// Input adds hook-specific fields to the OPA input document, read from
 	// rc.Payload. Nil when the hook needs only the common fields.
 	Input func(rc *riskcontext.RiskContext, input map[string]any)
@@ -30,11 +34,11 @@ var (
 	registry = map[string]Hook{}
 )
 
-// Register adds h to the registry. An empty name or policy, or a name already
-// registered, is a programming error and panics at startup.
+// Register adds h to the registry. An empty name, policy or provenance, or a
+// name already registered, is a programming error and panics at startup.
 func Register(h Hook) {
-	if h.Name == "" || h.Policy == "" {
-		panic(fmt.Sprintf("hooks: Register needs a name and a policy, got %+v", h))
+	if h.Name == "" || h.Policy == "" || h.Provenance == "" {
+		panic(fmt.Sprintf("hooks: Register needs a name, policy and provenance, got %+v", h))
 	}
 	mu.Lock()
 	defer mu.Unlock()

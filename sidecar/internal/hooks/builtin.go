@@ -3,11 +3,13 @@ package hooks
 
 import "github.com/acf-sdk/sidecar/pkg/riskcontext"
 
+// The provenance labels match what the SDK's hook methods have always sent, so
+// assigning them in the sidecar changes no trust weight for SDK traffic.
 func init() {
-	Register(Hook{Name: "on_prompt", Policy: "acf.policy.prompt"})
-	Register(Hook{Name: "on_context", Policy: "acf.policy.context", Input: contextInput})
-	Register(Hook{Name: "on_tool_call", Policy: "acf.policy.tool", Input: toolCallInput})
-	Register(Hook{Name: "on_memory", Policy: "acf.policy.memory", Input: memoryInput})
+	Register(Hook{Name: "on_prompt", Policy: "acf.policy.prompt", Provenance: "user"})
+	Register(Hook{Name: "on_context", Policy: "acf.policy.context", Provenance: "rag", Input: contextInput})
+	Register(Hook{Name: "on_tool_call", Policy: "acf.policy.tool", Provenance: "agent", Input: toolCallInput})
+	Register(Hook{Name: "on_memory", Policy: "acf.policy.memory", Provenance: "agent", Input: memoryInput})
 }
 
 func payloadMap(rc *riskcontext.RiskContext) (map[string]any, bool) {
