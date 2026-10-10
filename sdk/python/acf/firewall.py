@@ -238,7 +238,38 @@ class Firewall:
         """
         return self._on_memory(key, value, op, session_id="")
 
+    def on_tool_result(self, tool: str, result: Any) -> Decision | SanitiseResult:
+        """Evaluate a tool's output before the agent reads it.
+
+        tool names the tool that produced the output, so policy can tell
+        sources apart: output from a tool in the sidecar's trusted_tools list
+        is not screened. A result that is not a string is JSON-encoded first.
+
+        Returns Decision.ALLOW, Decision.BLOCK, or a SanitiseResult whose
+        sanitised_text is the cleaned output to show the agent instead.
+        """
+        return self._on_tool_result(tool, result, session_id="")
+
     # ── hook implementations, shared with Session ────────────────────────────
+
+    def _on_tool_result(self, tool: str, result: Any, *, session_id: str) -> Decision | SanitiseResult:
+        text = result if isinstance(result, str) else json.dumps(result, separators=(",", ":"), default=str)
+        payload = self._build_payload(
+            "on_tool_result",
+            {"tool": tool, "result": text},
+            provenance="tool_output",
+            session_id=session_id,
+        )
+        decision = self._send(payload)
+        if isinstance(decision, SanitiseResult) and decision.sanitised_text:
+            # The sidecar wraps a sanitised object payload as {"sanitised": text}.
+            try:
+                wrapped = json.loads(decision.sanitised_text)
+            except json.JSONDecodeError:
+                wrapped = None
+            if isinstance(wrapped, dict) and isinstance(wrapped.get("sanitised"), str):
+                decision.sanitised_text = wrapped["sanitised"]
+        return decision
 
     def _on_task(self, scope: dict[str, Any], *, session_id: str) -> Decision | SanitiseResult:
         payload = self._build_payload("on_task", scope, provenance="developer", session_id=session_id)
@@ -332,10 +363,11 @@ class Firewall:
         from .scanners import InputType, ScanInput, TrustLevel
 
         hook_to_input_type = {
-            "on_prompt":    InputType.PROMPT,
-            "on_context":   InputType.RAG_DOCUMENT,
-            "on_tool_call": InputType.TOOL_CALL,
-            "on_memory":    InputType.MEMORY_WRITE,
+            "on_prompt":      InputType.PROMPT,
+            "on_context":     InputType.RAG_DOCUMENT,
+            "on_tool_call":   InputType.TOOL_CALL,
+            "on_memory":      InputType.MEMORY_WRITE,
+            "on_tool_result": InputType.TOOL_OUTPUT,
         }
         input_type = hook_to_input_type.get(hook_type, InputType.PROMPT)
 
@@ -374,6 +406,8 @@ class Firewall:
         on_context:   content is a single chunk string
         on_tool_call: content is {"name", "params"} — scan params as JSON
         on_memory:    content is {"key", "value", "op"} — scan the value
+        on_tool_result: content is {"tool", "result"} — scan the result
+        on_task:      content is a scope declaration — nothing to scan
         """
         if isinstance(content, str):
             return content
@@ -388,6 +422,10 @@ class Firewall:
                 value = content.get("value")
                 if isinstance(value, str) and value:
                     return value
+            if hook_type == "on_tool_result":
+                result = content.get("result")
+                if isinstance(result, str) and result:
+                    return result
         return ""
 
     def _send(self, payload: bytes) -> Decision | SanitiseResult:

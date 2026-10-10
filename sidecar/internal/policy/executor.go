@@ -25,7 +25,7 @@ func ApplySanitise(targets []string, rc *riskcontext.RiskContext) []byte {
 
 	for _, target := range targets {
 		switch target {
-		case "prompt_text", "context_chunk", "memory_value", "tool_params":
+		case "prompt_text", "context_chunk", "memory_value", "tool_params", "tool_result":
 			// Redact the dangerous content from the payload. The scanner matches
 			// against CanonicalText, which normalise may have rewritten (URL/Base64
 			// decode, NFKC, leetspeak, zero-width strip). When that rewrite changed
@@ -68,7 +68,7 @@ func payloadText(rc *riskcontext.RiskContext) string {
 	case string:
 		return v
 	case map[string]any:
-		for _, key := range []string{"content", "value", "text", "prompt"} {
+		for _, key := range []string{"content", "value", "text", "prompt", "result"} {
 			if s, ok := v[key].(string); ok {
 				return s
 			}

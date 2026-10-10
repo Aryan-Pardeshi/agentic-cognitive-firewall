@@ -9,11 +9,12 @@ import (
 
 func TestBuiltinHooksAreRegistered(t *testing.T) {
 	want := map[string][2]string{
-		"on_prompt":    {"acf.policy.prompt", "user"},
-		"on_context":   {"acf.policy.context", "rag"},
-		"on_tool_call": {"acf.policy.tool", "agent"},
-		"on_memory":    {"acf.policy.memory", "agent"},
-		"on_task":      {"acf.policy.task", "developer"},
+		"on_prompt":      {"acf.policy.prompt", "user"},
+		"on_context":     {"acf.policy.context", "rag"},
+		"on_tool_call":   {"acf.policy.tool", "agent"},
+		"on_memory":      {"acf.policy.memory", "agent"},
+		"on_task":        {"acf.policy.task", "developer"},
+		"on_tool_result": {"acf.policy.tool_result", "tool_output"},
 	}
 	for name, w := range want {
 		h, ok := Lookup(name)
@@ -75,6 +76,8 @@ func TestInputBuildersProduceTheExpectedFields(t *testing.T) {
 				"tool_metadata": map[string]any{"destination": "x.com"}}},
 		{"on_task", map[string]any{"allowed_tools": []any{"a"}},
 			map[string]any{"task": map[string]any{"allowed_tools": []any{"a"}}}},
+		{"on_tool_result", map[string]any{"tool": "web_fetch", "result": "abcde"},
+			map[string]any{"tool_name": "web_fetch", "payload_size_bytes": 5}},
 		{"on_context", map[string]any{"content": "abcd", "source_trust": 0.2},
 			map[string]any{"payload_size_bytes": 4, "source_trust": 0.2}},
 		{"on_memory", map[string]any{"op": "write", "value": "abc", "hmac_valid": true},

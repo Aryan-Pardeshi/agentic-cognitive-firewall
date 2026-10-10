@@ -1,7 +1,11 @@
 // builtin.go — the hooks the sidecar ships with.
 package hooks
 
-import "github.com/acf-sdk/sidecar/pkg/riskcontext"
+import (
+	"errors"
+
+	"github.com/acf-sdk/sidecar/pkg/riskcontext"
+)
 
 // The provenance labels match what the SDK's hook methods have always sent, so
 // assigning them in the sidecar changes no trust weight for SDK traffic.
@@ -13,6 +17,39 @@ func init() {
 	// on_task declares a session's scope. It comes from the developer's code,
 	// not from content, hence its own provenance.
 	Register(Hook{Name: "on_task", Policy: "acf.policy.task", Provenance: "developer", Input: taskInput})
+	// on_tool_result screens a tool's output before the agent reads it, with
+	// the producing tool named so policy can tell sources apart.
+	Register(Hook{
+		Name: "on_tool_result", Policy: "acf.policy.tool_result", Provenance: "tool_output",
+		Input: toolResultInput, Validate: validateToolResult,
+	})
+}
+
+func toolResultInput(rc *riskcontext.RiskContext, input map[string]any) {
+	m, ok := payloadMap(rc)
+	if !ok {
+		return
+	}
+	input["tool_name"] = m["tool"]
+	if s, ok := m["result"].(string); ok {
+		input["payload_size_bytes"] = len([]byte(s))
+	}
+}
+
+// validateToolResult requires {"tool": <name>, "result": <text>}. The SDK
+// JSON-encodes structured results, so the result is always text to scan.
+func validateToolResult(payload any) error {
+	m, ok := payload.(map[string]any)
+	if !ok {
+		return errors.New("tool result must be an object")
+	}
+	if t, ok := m["tool"].(string); !ok || t == "" {
+		return errors.New("tool must be a non-empty string")
+	}
+	if _, ok := m["result"].(string); !ok {
+		return errors.New("result must be a string")
+	}
+	return nil
 }
 
 func taskInput(rc *riskcontext.RiskContext, input map[string]any) {

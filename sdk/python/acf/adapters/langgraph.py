@@ -2,8 +2,9 @@
 FirewallNode — drop-in node for LangGraph.
 
 Wraps a Firewall in a node you can insert anywhere in a StateGraph. Picks one
-of the four hooks (on_prompt, on_context, on_tool_call, on_memory) and runs
-it on whatever value you point it at in state.
+of the hooks (on_prompt, on_context, on_tool_call, on_memory, on_tool_result)
+and runs it on whatever value you point it at in state. A Session works in
+place of a Firewall, so a node can enforce a session's task scope.
 
 If the firewall says BLOCK, the node raises FirewallBlocked — a real exception
 that propagates out of the graph run so the caller can stop. If it says
@@ -21,7 +22,8 @@ from ..firewall import Firewall
 from ..models import Decision, SanitiseResult, ChunkResult, FirewallBlocked
 
 
-HookType = Literal["on_prompt", "on_context", "on_tool_call", "on_memory"]
+HookType = Literal["on_prompt", "on_context", "on_tool_call", "on_memory", "on_tool_result"]
+_HOOKS = ("on_prompt", "on_context", "on_tool_call", "on_memory", "on_tool_result")
 
 
 class FirewallNode:
@@ -62,10 +64,9 @@ class FirewallNode:
         output_key: Optional[str] = None,
         on_block: Optional[Callable[[dict, Decision], None]] = None,
     ) -> None:
-        if hook not in ("on_prompt", "on_context", "on_tool_call", "on_memory"):
+        if hook not in _HOOKS:
             raise ValueError(
-                f"Invalid hook {hook!r}. Must be one of: "
-                "on_prompt, on_context, on_tool_call, on_memory"
+                f"Invalid hook {hook!r}. Must be one of: " + ", ".join(_HOOKS)
             )
         self._firewall = firewall
         self._hook = hook
@@ -138,6 +139,16 @@ class FirewallNode:
                 key=value["key"],
                 value=value["value"],
                 op=value.get("op", "write"),
+            )
+
+        if self._hook == "on_tool_result":
+            if not isinstance(value, dict) or "tool" not in value or "result" not in value:
+                raise TypeError(
+                    "on_tool_result expects dict with 'tool' and 'result' keys"
+                )
+            return self._firewall.on_tool_result(
+                tool=value["tool"],
+                result=value["result"],
             )
 
         raise RuntimeError(f"Unreachable hook: {self._hook}")

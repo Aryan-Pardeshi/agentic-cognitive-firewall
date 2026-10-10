@@ -7,6 +7,7 @@
 //   - unknown or missing hook_type
 //   - empty provenance
 //   - nil payload
+//   - a payload the hook's registered validator rejects
 //
 // It also takes the fields a client must not control out of the client's
 // hands: provenance is replaced by the label the hooks registry assigns to the
@@ -45,6 +46,10 @@ func (v *ValidateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
 	}
 	if rc.Payload == nil {
 		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:nil_payload"})
+		return true
+	}
+	if h.Validate != nil && h.Validate(rc.Payload) != nil {
+		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:invalid_payload"})
 		return true
 	}
 	rc.ClaimedProvenance, rc.Provenance = rc.Provenance, h.Provenance

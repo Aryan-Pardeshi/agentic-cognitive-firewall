@@ -119,3 +119,7 @@ class Session:
     def on_memory(self, key: str, value: str, op: str = "write") -> Decision | SanitiseResult:
         """Evaluate a memory read or write in this session. See Firewall.on_memory."""
         return self._firewall._on_memory(key, value, op, session_id=self.id)
+
+    def on_tool_result(self, tool: str, result: Any) -> Decision | SanitiseResult:
+        """Evaluate a tool's output in this session. See Firewall.on_tool_result."""
+        return self._firewall._on_tool_result(tool, result, session_id=self.id)

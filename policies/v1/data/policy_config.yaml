@@ -28,6 +28,9 @@ destination_allowlist:    # permitted network destinations for tool calls; omit 
   - api.example.com
   - cdn.example.com
 
+trusted_tools: []         # tools whose output the deployment controls (e.g. an internal API);
+                          # on_tool_result does not screen their output. Empty = screen all.
+
 signal_weights:          # per-signal contribution to risk score
   # integrity
   hmac_invalid: 1.0           # always hard block
@@ -37,6 +40,7 @@ signal_weights:          # per-signal contribution to risk score
   validate:invalid_session_id: 1.0
   validate:missing_provenance: 0.9
   validate:nil_payload: 1.0
+  validate:invalid_payload: 1.0   # payload shape rejected by the hook's validator
 
   # task scope declarations (emitted by the session stage on on_task)
   task:no_session: 1.0          # a scope must belong to a session

@@ -27,6 +27,9 @@ type Hook struct {
 	// Input adds hook-specific fields to the OPA input document, read from
 	// rc.Payload. Nil when the hook needs only the common fields.
 	Input func(rc *riskcontext.RiskContext, input map[string]any)
+	// Validate checks the payload's shape. The validate stage hard-blocks a
+	// payload it rejects. Nil when any non-nil payload is acceptable.
+	Validate func(payload any) error
 }
 
 var (
