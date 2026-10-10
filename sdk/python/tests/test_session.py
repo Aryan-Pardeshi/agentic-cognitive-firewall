@@ -22,13 +22,17 @@ def firewall(monkeypatch):
     monkeypatch.delenv("ACF_SEMANTIC_SCAN", raising=False)
     fw = Firewall(socket_path="/tmp/acf_test_session.sock", hmac_key=HMAC_KEY)
     sent: list[dict] = []
+    verdicts: dict[str, Decision] = {}  # hook_type -> decision; default ALLOW
 
     def record(payload: bytes) -> dict:
-        sent.append(json.loads(payload))
-        return {"decision": Decision.ALLOW.value, "sanitised_payload": b""}
+        body = json.loads(payload)
+        sent.append(body)
+        decision = verdicts.get(body["hook_type"], Decision.ALLOW)
+        return {"decision": decision.value, "sanitised_payload": b""}
 
     monkeypatch.setattr(fw._transport, "send", record)
     fw.sent = sent  # type: ignore[attr-defined]
+    fw.verdicts = verdicts  # type: ignore[attr-defined]
     return fw
 
 
@@ -78,3 +82,42 @@ def test_session_payloads_match_firewall_payloads_apart_from_the_id(firewall):
 
 def test_session_is_exported():
     assert Session.__module__ == "acf.session"
+
+
+def test_scope_is_declared_once_when_the_session_starts(firewall):
+    constraints = {"send_money": {"amount": {"max": 100}}}
+    s = firewall.session(
+        allowed_tools=["send_money"],
+        trusted_values=["GB29NWBK60161331926819"],
+        tool_constraints=constraints,
+    )
+    s.on_tool_call("send_money", {"amount": 20})
+    task, call = firewall.sent
+    assert task["hook_type"] == "on_task" and task["session_id"] == s.id
+    assert task["payload"] == {
+        "allowed_tools": ["send_money"],
+        "trusted_values": ["GB29NWBK60161331926819"],
+        "tool_constraints": constraints,
+    }
+    assert task["provenance"] == "developer"
+    assert call["hook_type"] == "on_tool_call"
+    assert s.scope == task["payload"]
+
+
+def test_no_scope_means_no_declaration(firewall):
+    s = firewall.session()
+    assert s.scope is None
+    assert firewall.sent == []
+
+
+def test_rejected_scope_raises(firewall):
+    firewall.verdicts["on_task"] = Decision.BLOCK
+    with pytest.raises(FirewallError, match="rejected the task scope"):
+        firewall.session(allowed_tools=["send_money"])
+
+
+@pytest.mark.parametrize("extra", [{"trusted_values": ["x"]}, {"tool_constraints": {"a": {}}}])
+def test_scope_details_need_allowed_tools(firewall, extra):
+    with pytest.raises(FirewallError, match="need allowed_tools"):
+        firewall.session(**extra)
+    assert firewall.sent == []

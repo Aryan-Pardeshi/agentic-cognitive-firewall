@@ -38,6 +38,11 @@ signal_weights:          # per-signal contribution to risk score
   validate:missing_provenance: 0.9
   validate:nil_payload: 1.0
 
+  # task scope declarations (emitted by the session stage on on_task)
+  task:no_session: 1.0          # a scope must belong to a session
+  task:invalid_scope: 1.0       # the declaration does not parse
+  task:already_declared: 1.0    # a session's scope is set once
+
   # catch-all backward-compat signal emitted on every pattern hit
   jailbreak_pattern: 0.9
 

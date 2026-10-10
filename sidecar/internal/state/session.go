@@ -12,19 +12,27 @@ type Session struct {
 	// Requests and Blocked count the decided requests in the session.
 	Requests int
 	Blocked  int
+	// Task is the scope declared through on_task, or nil if none was declared.
+	Task *TaskScope
 }
 
 // Clone returns a copy that shares nothing mutable with s, so a caller can
 // read it without holding the store's lock.
 func (s *Session) Clone() *Session {
 	c := *s
+	c.Task = s.Task.clone()
 	return &c
 }
 
-// View is the part of the session policies can read, as input.state.
+// View is the part of the session policies can read, as input.state. Values
+// are JSON-shaped so the policy engine sees the same types as for a payload.
 func (s *Session) View() map[string]any {
-	return map[string]any{
+	v := map[string]any{
 		"requests": s.Requests,
 		"blocked":  s.Blocked,
 	}
+	if s.Task != nil {
+		v["task"] = s.Task.view()
+	}
+	return v
 }

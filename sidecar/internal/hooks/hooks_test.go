@@ -13,6 +13,7 @@ func TestBuiltinHooksAreRegistered(t *testing.T) {
 		"on_context":   {"acf.policy.context", "rag"},
 		"on_tool_call": {"acf.policy.tool", "agent"},
 		"on_memory":    {"acf.policy.memory", "agent"},
+		"on_task":      {"acf.policy.task", "developer"},
 	}
 	for name, w := range want {
 		h, ok := Lookup(name)
@@ -60,16 +61,20 @@ func TestRegisterRejectsDuplicatesAndEmptyFields(t *testing.T) {
 	}
 }
 
-func TestInputBuildersMatchThePreviousEngineFields(t *testing.T) {
+func TestInputBuildersProduceTheExpectedFields(t *testing.T) {
 	cases := []struct {
 		hook    string
 		payload any
 		want    map[string]any
 	}{
-		{"on_tool_call", map[string]any{"name": "search", "params": map[string]any{}},
-			map[string]any{"tool_name": "search", "tool_metadata": map[string]any{}}},
+		{"on_tool_call", map[string]any{"name": "search", "params": map[string]any{"q": "x"}},
+			map[string]any{"tool_name": "search", "tool_params": map[string]any{"q": "x"},
+				"tool_metadata": map[string]any{}}},
 		{"on_tool_call", map[string]any{"name": "fetch", "metadata": map[string]any{"destination": "x.com"}},
-			map[string]any{"tool_name": "fetch", "tool_metadata": map[string]any{"destination": "x.com"}}},
+			map[string]any{"tool_name": "fetch", "tool_params": map[string]any{},
+				"tool_metadata": map[string]any{"destination": "x.com"}}},
+		{"on_task", map[string]any{"allowed_tools": []any{"a"}},
+			map[string]any{"task": map[string]any{"allowed_tools": []any{"a"}}}},
 		{"on_context", map[string]any{"content": "abcd", "source_trust": 0.2},
 			map[string]any{"payload_size_bytes": 4, "source_trust": 0.2}},
 		{"on_memory", map[string]any{"op": "write", "value": "abc", "hmac_valid": true},

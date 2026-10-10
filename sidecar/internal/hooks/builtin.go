@@ -10,6 +10,15 @@ func init() {
 	Register(Hook{Name: "on_context", Policy: "acf.policy.context", Provenance: "rag", Input: contextInput})
 	Register(Hook{Name: "on_tool_call", Policy: "acf.policy.tool", Provenance: "agent", Input: toolCallInput})
 	Register(Hook{Name: "on_memory", Policy: "acf.policy.memory", Provenance: "agent", Input: memoryInput})
+	// on_task declares a session's scope. It comes from the developer's code,
+	// not from content, hence its own provenance.
+	Register(Hook{Name: "on_task", Policy: "acf.policy.task", Provenance: "developer", Input: taskInput})
+}
+
+func taskInput(rc *riskcontext.RiskContext, input map[string]any) {
+	if m, ok := payloadMap(rc); ok {
+		input["task"] = m
+	}
 }
 
 func payloadMap(rc *riskcontext.RiskContext) (map[string]any, bool) {
@@ -23,6 +32,12 @@ func toolCallInput(rc *riskcontext.RiskContext, input map[string]any) {
 		return
 	}
 	input["tool_name"] = m["name"]
+	// Arguments, so policies can check them against a session's task scope.
+	if params, ok := m["params"].(map[string]any); ok {
+		input["tool_params"] = params
+	} else {
+		input["tool_params"] = map[string]any{}
+	}
 	if meta, ok := m["metadata"]; ok {
 		input["tool_metadata"] = meta
 	} else {

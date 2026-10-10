@@ -33,6 +33,9 @@ func (s *SessionStage) Name() string { return "session" }
 // session ID rather than treating the request as sessionless, because a
 // sessionless request would skip the session's restrictions.
 func (s *SessionStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
+	if rc.HookType == "on_task" {
+		return s.checkTask(rc)
+	}
 	if rc.SessionID == "" {
 		return false
 	}
@@ -46,8 +49,36 @@ func (s *SessionStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
 	return false
 }
 
+// checkTask validates an on_task declaration before policy sees it. A scope
+// needs a session to belong to, must parse, and is declared once: the scope a
+// session starts with holds for its lifetime, and a new task needs a new
+// session. Policy then decides whether the scope stays within global policy.
+func (s *SessionStage) checkTask(rc *riskcontext.RiskContext) (hardBlock bool) {
+	if rc.SessionID == "" {
+		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "task:no_session"})
+		return true
+	}
+	if !sessionIDPattern.MatchString(rc.SessionID) {
+		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:invalid_session_id"})
+		return true
+	}
+	if _, err := state.ParseTaskScope(rc.Payload); err != nil {
+		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "task:invalid_scope"})
+		return true
+	}
+	if sess := s.store.Get(rc.SessionID); sess != nil {
+		if sess.Task != nil {
+			rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "task:already_declared"})
+			return true
+		}
+		rc.State = sess.View()
+	}
+	return false
+}
+
 // Record updates the session after a decision. The pipeline calls it once per
-// request that reached policy evaluation.
+// request that reached policy evaluation. An allowed on_task stores the scope;
+// if two declarations race, the first to be recorded wins.
 func (s *SessionStage) Record(rc *riskcontext.RiskContext, d byte) {
 	if rc.SessionID == "" || !sessionIDPattern.MatchString(rc.SessionID) {
 		return
@@ -56,6 +87,11 @@ func (s *SessionStage) Record(rc *riskcontext.RiskContext, d byte) {
 		sess.Requests++
 		if d == decision.Block {
 			sess.Blocked++
+		}
+		if rc.HookType == "on_task" && d == decision.Allow && sess.Task == nil {
+			if scope, err := state.ParseTaskScope(rc.Payload); err == nil {
+				sess.Task = scope
+			}
 		}
 	})
 }

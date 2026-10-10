@@ -39,13 +39,29 @@ class Session:
     Args:
         firewall:   The Firewall whose transport and scanner the session uses.
         session_id: The session's ID. Defaults to a random 128-bit hex string.
+        allowed_tools, trusted_values, tool_constraints:
+                    The task scope, declared to the sidecar when the session is
+                    created. See Firewall.session.
+
+    Attributes:
+        id:    The session ID.
+        scope: The declared task scope, or None if none was declared.
 
     Raises:
         FirewallError: If session_id is not 1-128 characters from
-                       A-Z a-z 0-9 . _ : -
+                       A-Z a-z 0-9 . _ : -, or the task scope is incomplete
+                       or rejected by the sidecar.
     """
 
-    def __init__(self, firewall: "Firewall", session_id: str | None = None) -> None:
+    def __init__(
+        self,
+        firewall: "Firewall",
+        session_id: str | None = None,
+        *,
+        allowed_tools: list[str] | None = None,
+        trusted_values: list[str] | None = None,
+        tool_constraints: dict[str, dict[str, dict[str, Any]]] | None = None,
+    ) -> None:
         sid = secrets.token_hex(16) if session_id is None else session_id
         if not isinstance(sid, str) or not _SESSION_ID.match(sid):
             raise FirewallError(
@@ -53,6 +69,31 @@ class Session:
             )
         self._firewall = firewall
         self.id = sid
+        self.scope: dict[str, Any] | None = None
+
+        if allowed_tools is None:
+            if trusted_values is not None or tool_constraints is not None:
+                raise FirewallError(
+                    "trusted_values and tool_constraints need allowed_tools: "
+                    "a task scope starts from the tools it allows"
+                )
+            return
+
+        scope: dict[str, Any] = {"allowed_tools": list(allowed_tools)}
+        if trusted_values is not None:
+            scope["trusted_values"] = list(trusted_values)
+        if tool_constraints is not None:
+            scope["tool_constraints"] = tool_constraints
+        result = firewall._on_task(scope, session_id=sid)
+        decision = getattr(result, "decision", result)
+        if decision is not Decision.ALLOW:
+            # Fail loudly: an agent must never run believing it is scoped
+            # when the sidecar did not accept the scope.
+            raise FirewallError(
+                f"the sidecar rejected the task scope ({decision.name}); check that every "
+                "allowed tool is in its global allowlist and the constraints are well formed"
+            )
+        self.scope = scope
 
     def __enter__(self) -> "Session":
         return self

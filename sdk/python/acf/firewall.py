@@ -152,23 +152,58 @@ class Firewall:
 
     # ── sessions ─────────────────────────────────────────────────────────────
 
-    def session(self, session_id: str | None = None) -> "Session":
+    def session(
+        self,
+        session_id: str | None = None,
+        *,
+        allowed_tools: list[str] | None = None,
+        trusted_values: list[str] | None = None,
+        tool_constraints: dict[str, dict[str, dict[str, Any]]] | None = None,
+    ) -> "Session":
         """Start a session: hook calls the sidecar treats as one agent run.
 
         Within a session the sidecar remembers earlier calls, so a policy can
         decide on more than the single request in front of it. Use the
         returned Session's hook methods in place of this Firewall's::
 
-            with firewall.session() as s:
+            with firewall.session(
+                allowed_tools=["get_balance", "send_money"],
+                trusted_values=["GB29NWBK60161331926819"],
+                tool_constraints={"send_money": {
+                    "recipient": {"allowed": ["GB29NWBK60161331926819"]},
+                    "amount": {"max": 100},
+                }},
+            ) as s:
                 s.on_prompt(user_msg)
-                s.on_tool_call("search", {"q": "..."})
+                s.on_tool_call("send_money", {"recipient": "...", "amount": 20})
+
+        Passing allowed_tools declares the session's task scope. For the rest
+        of the session the sidecar blocks any tool call outside allowed_tools,
+        and any call whose arguments break tool_constraints. Each constraint is
+        a dict with any of ``allowed`` (list of permitted values), ``pattern``
+        (regular expression) and ``max`` (largest number); all must hold, and
+        an argument the call does not pass is not checked. trusted_values are
+        values you vouch for, such as recipients the user supplied. A scope can
+        only narrow the sidecar's global allowlist, and is set once per session.
 
         session_id defaults to a random 128-bit hex string. A supplied ID must
         be 1-128 characters from A-Z a-z 0-9 . _ : -, the same rule the
         sidecar enforces.
+
+        Raises:
+            FirewallError: If the session ID is malformed, if trusted_values or
+                           tool_constraints are given without allowed_tools, or
+                           if the sidecar rejects the scope (for example, a tool
+                           outside its global allowlist).
         """
         from .session import Session
-        return Session(self, session_id)
+        return Session(
+            self,
+            session_id,
+            allowed_tools=allowed_tools,
+            trusted_values=trusted_values,
+            tool_constraints=tool_constraints,
+        )
 
     # ── v1 hook call sites ────────────────────────────────────────────────────
     # These are sessionless: each call is evaluated on its own.
@@ -204,6 +239,10 @@ class Firewall:
         return self._on_memory(key, value, op, session_id="")
 
     # ── hook implementations, shared with Session ────────────────────────────
+
+    def _on_task(self, scope: dict[str, Any], *, session_id: str) -> Decision | SanitiseResult:
+        payload = self._build_payload("on_task", scope, provenance="developer", session_id=session_id)
+        return self._send(payload)
 
     def _on_prompt(self, text: str, *, session_id: str) -> Decision | SanitiseResult:
         payload = self._build_payload("on_prompt", text, provenance="user", session_id=session_id)
