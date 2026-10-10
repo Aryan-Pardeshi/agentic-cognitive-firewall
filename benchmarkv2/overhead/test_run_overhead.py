@@ -101,6 +101,9 @@ class RecordingFirewall:
     def on_memory(self, key, value, op):
         self.calls.append(("on_memory", key, value, op))
 
+    def on_tool_result(self, tool, result):
+        self.calls.append(("on_tool_result", tool, result))
+
 
 def test_public_call_reaches_the_matching_hook_for_every_corpus_case():
     corpus = run_overhead.load_corpus()

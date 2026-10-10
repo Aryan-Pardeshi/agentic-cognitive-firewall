@@ -53,6 +53,8 @@ type payloadCase struct {
 	// not let a client lower its own verdict through them.
 	Signals []map[string]any `json:"signals,omitempty"`
 	State   map[string]any   `json:"state,omitempty"`
+	// SessionID is empty for corpus cases; the session flow tests set it.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 // isGap reports whether this case is a gap probe: one carrying a Desired verdict
@@ -158,7 +160,7 @@ func send(t *testing.T, pc payloadCase) string {
 		"score":      0.0,
 		"signals":    signals,
 		"provenance": pc.Provenance,
-		"session_id": "",
+		"session_id": pc.SessionID,
 		"hook_type":  pc.HookType,
 		"payload":    pc.Payload,
 		"state":      state,
@@ -292,7 +294,7 @@ func logCoverage(t *testing.T, baseline, gaps []payloadCase) {
 	t.Helper()
 
 	// Fixed hook order so an uncovered hook shows a zero row instead of vanishing.
-	hooks := []string{"on_prompt", "on_context", "on_tool_call", "on_memory"}
+	hooks := []string{"on_prompt", "on_context", "on_tool_call", "on_memory", "on_tool_result"}
 
 	type cell struct{ hook, verdict string }
 	counts := map[cell]int{}

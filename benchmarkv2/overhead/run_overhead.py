@@ -57,9 +57,10 @@ CORPUS_PATH = REPO_ROOT / "tests" / "integration" / "adversarial_payloads.json"
 SIDECAR_CONFIG = REPO_ROOT / "config" / "sidecar.yaml"
 KEY_HEX = "0123456789abcdef" * 4
 
-HOOKS = ("on_prompt", "on_context", "on_tool_call", "on_memory")
+HOOKS = ("on_prompt", "on_context", "on_tool_call", "on_memory", "on_tool_result")
 # Provenance the SDK's public hook methods set for each hook.
-SDK_PROVENANCE = {"on_prompt": "user", "on_context": "rag", "on_tool_call": "agent", "on_memory": "agent"}
+SDK_PROVENANCE = {"on_prompt": "user", "on_context": "rag", "on_tool_call": "agent", "on_memory": "agent",
+                  "on_tool_result": "tool_output"}
 SDK_MODES = ("off", "tfidf", "sentence-transformer")
 SDK_PHASES = ("scan", "serialise", "sign", "ipc", "decode", "total")
 GO_BENCH_PACKAGES = ("./internal/pipeline", "./internal/transport", "./internal/crypto")
@@ -440,6 +441,10 @@ def sdk_content(case: dict[str, Any]) -> Any:
         return {"name": payload["name"], "params": payload.get("params", {})}
     if hook == "on_memory":
         return {"key": payload["key"], "value": payload.get("value", ""), "op": payload.get("op", "write")}
+    if hook == "on_tool_result":
+        # A case with no tool name is sent with an empty one, which the
+        # sidecar rejects, as it would from the SDK.
+        return {"tool": payload.get("tool", ""), "result": as_text(payload.get("result", ""))}
     raise ValueError(f"unknown hook {hook!r}")
 
 
@@ -452,6 +457,8 @@ def public_call(firewall: Any, case: dict[str, Any]) -> Any:
         return firewall.on_context([content])
     if hook == "on_tool_call":
         return firewall.on_tool_call(content["name"], content["params"])
+    if hook == "on_tool_result":
+        return firewall.on_tool_result(content["tool"], content["result"])
     return firewall.on_memory(content["key"], content["value"], content["op"])
 
 
