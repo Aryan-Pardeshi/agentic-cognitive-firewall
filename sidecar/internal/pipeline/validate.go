@@ -10,18 +10,12 @@
 package pipeline
 
 import (
+	"github.com/acf-sdk/sidecar/internal/hooks"
 	"github.com/acf-sdk/sidecar/pkg/riskcontext"
 )
 
-// validHookTypes is the set of hook types the pipeline accepts.
-var validHookTypes = map[string]bool{
-	"on_prompt":    true,
-	"on_context":   true,
-	"on_tool_call": true,
-	"on_memory":    true,
-}
-
-// ValidateStage checks the schema of the inbound RiskContext.
+// ValidateStage checks the schema of the inbound RiskContext. A hook type is
+// valid when it is in the hooks registry.
 type ValidateStage struct{}
 
 func (v *ValidateStage) Name() string { return "validate" }
@@ -29,7 +23,7 @@ func (v *ValidateStage) Name() string { return "validate" }
 // Run validates rc and emits a hard block signal if any required field is
 // missing or invalid. The stage does not mutate rc on success.
 func (v *ValidateStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
-	if !validHookTypes[rc.HookType] {
+	if _, ok := hooks.Lookup(rc.HookType); !ok {
 		rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "validate:invalid_hook_type"})
 		return true
 	}

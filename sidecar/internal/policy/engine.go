@@ -24,6 +24,7 @@ import (
 	"github.com/open-policy-agent/opa/v1/storage/inmem"
 	"gopkg.in/yaml.v3"
 
+	"github.com/acf-sdk/sidecar/internal/hooks"
 	"github.com/acf-sdk/sidecar/pkg/riskcontext"
 )
 
@@ -35,20 +36,15 @@ type OPAResult struct {
 	SanitiseTargets []string
 }
 
-// preparedQueries holds one compiled query per hook type.
-// Swapped atomically on hot reload.
-type preparedQueries struct {
-	onPrompt   rego.PreparedEvalQuery
-	onContext  rego.PreparedEvalQuery
-	onToolCall rego.PreparedEvalQuery
-	onMemory   rego.PreparedEvalQuery
-}
+// preparedQueries holds one compiled query per registered hook, keyed by hook
+// name. A loaded map is never mutated; hot reload swaps in a new one.
+type preparedQueries map[string]rego.PreparedEvalQuery
 
 // Engine is a thread-safe OPA policy evaluator with hot reload support.
 type Engine struct {
 	policyDir string
 	mu        sync.RWMutex
-	queries   *preparedQueries
+	queries   preparedQueries
 	// weights is signal_weights from policy_config.yaml. It is swapped with
 	// queries on reload and never mutated in place.
 	weights map[string]float64
@@ -78,30 +74,14 @@ func NewEngine(policyDir string) (*Engine, error) {
 //
 //	Evaluate(rc) (decision string, sanitiseTargets []string, err error)
 func (e *Engine) Evaluate(rc *riskcontext.RiskContext) (string, []string, error) {
-	input := buildInput(rc)
-
 	e.mu.RLock()
-	q := e.queries
+	q, ok := e.queries[rc.HookType]
 	e.mu.RUnlock()
-
-	ctx := context.Background()
-
-	var rs rego.ResultSet
-	var err error
-
-	switch rc.HookType {
-	case "on_prompt":
-		rs, err = q.onPrompt.Eval(ctx, rego.EvalInput(input))
-	case "on_context":
-		rs, err = q.onContext.Eval(ctx, rego.EvalInput(input))
-	case "on_tool_call":
-		rs, err = q.onToolCall.Eval(ctx, rego.EvalInput(input))
-	case "on_memory":
-		rs, err = q.onMemory.Eval(ctx, rego.EvalInput(input))
-	default:
+	if !ok {
 		return "BLOCK", nil, fmt.Errorf("policy.Engine: unknown hook_type %q", rc.HookType)
 	}
 
+	rs, err := q.Eval(context.Background(), rego.EvalInput(buildInput(rc)))
 	if err != nil {
 		return "", nil, fmt.Errorf("policy.Engine: OPA evaluation error: %w", err)
 	}
@@ -147,38 +127,23 @@ func (e *Engine) reload() error {
 		return fmt.Errorf("policy.Engine: no .rego files found in %s", e.policyDir)
 	}
 
-	// 3. Compile a PreparedEvalQuery for each hook type.
-	compile := func(pkg string) (rego.PreparedEvalQuery, error) {
-		opts := append(modules, rego.Query("data."+pkg), rego.Store(store))
-		return rego.New(opts...).PrepareForEval(ctx)
-	}
-
-	onPrompt, err := compile("acf.policy.prompt")
-	if err != nil {
-		return fmt.Errorf("policy.Engine: compile prompt: %w", err)
-	}
-	onContext, err := compile("acf.policy.context")
-	if err != nil {
-		return fmt.Errorf("policy.Engine: compile context: %w", err)
-	}
-	onToolCall, err := compile("acf.policy.tool")
-	if err != nil {
-		return fmt.Errorf("policy.Engine: compile tool: %w", err)
-	}
-	onMemory, err := compile("acf.policy.memory")
-	if err != nil {
-		return fmt.Errorf("policy.Engine: compile memory: %w", err)
+	// 3. Compile a PreparedEvalQuery for every registered hook. A hook whose
+	// policy package fails to compile fails the whole load, so a reload never
+	// leaves some hooks on old policies and others on new ones.
+	queries := preparedQueries{}
+	for _, h := range hooks.All() {
+		opts := append(modules, rego.Query("data."+h.Policy), rego.Store(store))
+		q, err := rego.New(opts...).PrepareForEval(ctx)
+		if err != nil {
+			return fmt.Errorf("policy.Engine: compile %s (%s): %w", h.Name, h.Policy, err)
+		}
+		queries[h.Name] = q
 	}
 
 	// 4. Atomically swap in the new compiled queries and weights, under one
 	// lock so the engine never holds queries and weights from different loads.
 	e.mu.Lock()
-	e.queries = &preparedQueries{
-		onPrompt:   onPrompt,
-		onContext:  onContext,
-		onToolCall: onToolCall,
-		onMemory:   onMemory,
-	}
+	e.queries = queries
 	e.weights = weights
 	e.mu.Unlock()
 
@@ -334,35 +299,8 @@ func buildInput(rc *riskcontext.RiskContext) map[string]any {
 	}
 
 	// Hook-specific fields extracted from rc.Payload.
-	switch rc.HookType {
-	case "on_tool_call":
-		if m, ok := rc.Payload.(map[string]any); ok {
-			input["tool_name"] = m["name"]
-			if meta, ok := m["metadata"]; ok {
-				input["tool_metadata"] = meta
-			} else {
-				input["tool_metadata"] = map[string]any{}
-			}
-		}
-	case "on_context":
-		if m, ok := rc.Payload.(map[string]any); ok {
-			if s, ok := m["content"].(string); ok {
-				input["payload_size_bytes"] = len([]byte(s))
-			}
-			if trust, ok := m["source_trust"]; ok {
-				input["source_trust"] = trust
-			}
-		}
-	case "on_memory":
-		if m, ok := rc.Payload.(map[string]any); ok {
-			input["memory_op"] = m["op"]
-			if v, ok := m["value"].(string); ok {
-				input["payload_size_bytes"] = len([]byte(v))
-			}
-			input["integrity"] = map[string]any{
-				"hmac_valid": m["hmac_valid"],
-			}
-		}
+	if h, ok := hooks.Lookup(rc.HookType); ok && h.Input != nil {
+		h.Input(rc, input)
 	}
 
 	return input
