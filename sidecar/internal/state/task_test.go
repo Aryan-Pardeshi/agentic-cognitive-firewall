@@ -45,11 +45,11 @@ func TestParseTaskScope_AcceptsAFullDeclaration(t *testing.T) {
 
 func TestParseTaskScope_RejectsMalformedDeclarations(t *testing.T) {
 	cases := map[string]any{
-		"not an object":            []any{"x"},
-		"missing allowed_tools":    map[string]any{},
-		"unknown field":            map[string]any{"allowed_tools": []any{"a"}, "admin": true},
-		"tools not strings":        map[string]any{"allowed_tools": []any{1}},
-		"empty tool name":          map[string]any{"allowed_tools": []any{""}},
+		"not an object":         []any{"x"},
+		"missing allowed_tools": map[string]any{},
+		"unknown field":         map[string]any{"allowed_tools": []any{"a"}, "admin": true},
+		"tools not strings":     map[string]any{"allowed_tools": []any{1}},
+		"empty tool name":       map[string]any{"allowed_tools": []any{""}},
 		"constraint on a tool not allowed": map[string]any{
 			"allowed_tools":    []any{"a"},
 			"tool_constraints": map[string]any{"b": map[string]any{"p": map[string]any{"max": 1.0}}},

@@ -7,8 +7,10 @@ package pipeline
 
 import (
 	"regexp"
+	"sort"
 
 	"github.com/acf-sdk/sidecar/internal/state"
+	"github.com/acf-sdk/sidecar/internal/taint"
 	"github.com/acf-sdk/sidecar/pkg/decision"
 	"github.com/acf-sdk/sidecar/pkg/riskcontext"
 )
@@ -44,9 +46,65 @@ func (s *SessionStage) Run(rc *riskcontext.RiskContext) (hardBlock bool) {
 		return true
 	}
 	if sess := s.store.Get(rc.SessionID); sess != nil {
-		rc.State = sess.View()
+		view := sess.View()
+		if rc.HookType == "on_tool_call" {
+			if findings := taintFindings(rc.Payload, sess); len(findings) > 0 {
+				// Policy decides from the findings; the signal is for the
+				// decision log and per-hook attribution.
+				view["taint"] = findings
+				rc.Signals = append(rc.Signals, riskcontext.Signal{Category: "taint:untrusted_argument"})
+			}
+		}
+		rc.State = view
 	}
 	return false
+}
+
+// taintFindings lists the values in a tool call's arguments that the session
+// read in untrusted content and nobody vouched for. Each finding names the
+// argument, the value and every source it was read from. Once the session has
+// stopped tracking new values (TaintOverflow), an argument value it does not
+// know is reported with an "overflow" source, so policy fails closed rather
+// than trusting a value it can no longer vouch for.
+func taintFindings(payload any, sess *state.Session) []any {
+	if len(sess.Untrusted) == 0 && !sess.TaintOverflow {
+		return nil
+	}
+	m, _ := payload.(map[string]any)
+	params, _ := m["params"].(map[string]any)
+	names := make([]string, 0, len(params))
+	for name := range params {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	var findings []any
+	for _, name := range names {
+		for _, tok := range taint.Extract(flattenValue(params[name])) {
+			key := tok.Key()
+			if sess.Trusted[key] {
+				continue
+			}
+			srcs, known := sess.Untrusted[key]
+			if !known {
+				if !sess.TaintOverflow {
+					continue
+				}
+				srcs = []state.TaintSource{{Hook: "overflow"}}
+			}
+			sources := make([]any, len(srcs))
+			for i, src := range srcs {
+				sources[i] = map[string]any{"hook": src.Hook, "tool": src.Tool}
+			}
+			findings = append(findings, map[string]any{
+				"param":   name,
+				"kind":    tok.Kind,
+				"value":   tok.Value,
+				"sources": sources,
+			})
+		}
+	}
+	return findings
 }
 
 // checkTask validates an on_task declaration before policy sees it. A scope
@@ -86,12 +144,56 @@ func (s *SessionStage) Record(rc *riskcontext.RiskContext, d byte) {
 	s.store.Update(rc.SessionID, func(sess *state.Session) {
 		sess.Requests++
 		if d == decision.Block {
+			// The agent never sees blocked content, and values in a blocked
+			// request are never trusted.
 			sess.Blocked++
+			return
 		}
-		if rc.HookType == "on_task" && d == decision.Allow && sess.Task == nil {
-			if scope, err := state.ParseTaskScope(rc.Payload); err == nil {
-				sess.Task = scope
+		switch rc.HookType {
+		case "on_task":
+			if d == decision.Allow && sess.Task == nil {
+				if scope, err := state.ParseTaskScope(rc.Payload); err == nil {
+					sess.Task = scope
+					for _, v := range scope.TrustedValues {
+						for _, tok := range taint.Extract(v) {
+							sess.AddTrusted(tok.Key())
+						}
+					}
+				}
+			}
+		case "on_prompt":
+			// The user's own request: values in it are the user's to direct.
+			if text, ok := rc.Payload.(string); ok {
+				for _, tok := range taint.Extract(text) {
+					sess.AddTrusted(tok.Key())
+				}
+			}
+		case "on_context", "on_tool_result":
+			// Content the agent is about to read. A SANITISE is recorded too:
+			// the sanitised text may keep values, and over-tainting can only
+			// block more, never less.
+			text, tool := untrustedText(rc)
+			src := state.TaintSource{Hook: rc.HookType, Tool: tool}
+			for _, tok := range taint.Extract(text) {
+				sess.AddUntrusted(tok.Key(), src)
 			}
 		}
 	})
+}
+
+// untrustedText returns the content of an on_context or on_tool_result
+// request, and the producing tool for on_tool_result.
+func untrustedText(rc *riskcontext.RiskContext) (text, tool string) {
+	switch p := rc.Payload.(type) {
+	case string:
+		return p, ""
+	case map[string]any:
+		if rc.HookType == "on_tool_result" {
+			text, _ = p["result"].(string)
+			tool, _ = p["tool"].(string)
+			return text, tool
+		}
+		text, _ = p["content"].(string)
+	}
+	return text, ""
 }

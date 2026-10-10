@@ -29,7 +29,23 @@ destination_allowlist:    # permitted network destinations for tool calls; omit 
   - cdn.example.com
 
 trusted_tools: []         # tools whose output the deployment controls (e.g. an internal API);
-                          # on_tool_result does not screen their output. Empty = screen all.
+                          # on_tool_result does not screen their output, and values in it do not
+                          # taint tool arguments. Empty = treat all tool output as untrusted.
+
+consequential_tools:      # tools whose arguments must not carry values the agent read in untrusted
+  - send_email            # content (argument tainting). Omit the key to treat every tool as
+  - send_message          # consequential; set [] to switch tainting off. Adapt to your tool names.
+  - post_message
+  - send_money
+  - transfer_funds
+  - make_payment
+  - share_file
+  - delete_file
+  - execute_command
+  - update_password
+
+sensitive_params: {}      # per tool, the arguments tainting checks, e.g. {send_money: [recipient]};
+                          # a tool with no entry has every argument checked
 
 signal_weights:          # per-signal contribution to risk score
   # integrity
@@ -46,6 +62,10 @@ signal_weights:          # per-signal contribution to risk score
   task:no_session: 1.0          # a scope must belong to a session
   task:invalid_scope: 1.0       # the declaration does not parse
   task:already_declared: 1.0    # a session's scope is set once
+
+  # argument tainting (emitted by the session stage on on_tool_call)
+  taint:untrusted_argument: 0.0   # informational: tool.rego decides from input.state.taint,
+                                  # so the signal adds no risk score of its own
 
   # catch-all backward-compat signal emitted on every pattern hit
   jailbreak_pattern: 0.9

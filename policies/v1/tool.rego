@@ -5,6 +5,7 @@
 #                 path_traversal BLOCK
 #   Permission  → tool_allowlist BLOCK, network_destination_allowlist BLOCK
 #   Task scope  → session allowed_tools BLOCK, argument constraints BLOCK
+#   Taint       → untrusted value in a consequential tool's argument BLOCK
 #   Containment → tool_call_threshold ALLOW / SANITISE / BLOCK
 
 package acf.policy.tool
@@ -29,6 +30,7 @@ _gates_pass if {
     _destination_is_permitted
     _in_task_scope
     _constraints_satisfied
+    not _tainted_consequential_call
     not _has_detection_signal
 }
 
@@ -163,6 +165,51 @@ _max_ok(_, rule) if {
 _max_ok(value, rule) if {
     is_number(value)
     value <= rule.max
+}
+
+# ---------------------------------------------------------------------
+# Argument taint — a consequential tool may not take a sensitive argument
+# whose value the agent read in untrusted content: a retrieved document,
+# or output from a tool not in data.config.trusted_tools. The sidecar puts
+# this request's findings in input.state.taint; values from the user's
+# prompt and the task's trusted_values never appear there.
+# ---------------------------------------------------------------------
+
+_tainted_consequential_call if {
+    _is_consequential_tool
+    some finding in input.state.taint
+    _is_sensitive_param(finding.param)
+    some source in finding.sources
+    _is_untrusted_source(source)
+}
+
+# consequential_tools omitted: every tool is consequential (strict).
+_is_consequential_tool if {
+    not "consequential_tools" in object.keys(data.config)
+}
+
+_is_consequential_tool if {
+    input.tool_name in data.config.consequential_tools
+}
+
+# A tool with no sensitive_params entry has every argument checked.
+_is_sensitive_param(_) if {
+    not data.config.sensitive_params[input.tool_name]
+}
+
+_is_sensitive_param(param) if {
+    param in data.config.sensitive_params[input.tool_name]
+}
+
+# on_context and overflow sources are always untrusted; tool output is
+# untrusted unless the tool is listed in trusted_tools.
+_is_untrusted_source(source) if {
+    source.hook != "on_tool_result"
+}
+
+_is_untrusted_source(source) if {
+    source.hook == "on_tool_result"
+    not source.tool in data.config.trusted_tools
 }
 
 # Detection signal presence

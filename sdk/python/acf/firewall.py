@@ -182,9 +182,17 @@ class Firewall:
         and any call whose arguments break tool_constraints. Each constraint is
         a dict with any of ``allowed`` (list of permitted values), ``pattern``
         (regular expression) and ``max`` (largest number); all must hold, and
-        an argument the call does not pass is not checked. trusted_values are
-        values you vouch for, such as recipients the user supplied. A scope can
-        only narrow the sidecar's global allowlist, and is set once per session.
+        an argument the call does not pass is not checked. A scope can only
+        narrow the sidecar's global allowlist, and is set once per session.
+
+        Within any session the sidecar also tracks values the agent reads in
+        retrieved content and tool output: email addresses, URLs and hosts,
+        IBANs, and long numbers. A call to one of the sidecar's
+        consequential_tools whose argument repeats such a value is blocked,
+        unless the value appeared in the user's prompt or in trusted_values,
+        or came only from a tool in the sidecar's trusted_tools. So list in
+        trusted_values the values you vouch for, such as recipients the user
+        supplied outside the prompt.
 
         session_id defaults to a random 128-bit hex string. A supplied ID must
         be 1-128 characters from A-Z a-z 0-9 . _ : -, the same rule the

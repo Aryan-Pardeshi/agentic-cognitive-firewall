@@ -14,6 +14,14 @@ type Session struct {
 	Blocked  int
 	// Task is the scope declared through on_task, or nil if none was declared.
 	Task *TaskScope
+
+	// Untrusted maps a value's token key to where the agent read it in
+	// untrusted content. Trusted holds token keys from the user's prompt and
+	// the task scope's trusted_values; a trusted value is never tainted.
+	// TaintOverflow is set once Untrusted hits its cap. See taint.go.
+	Untrusted     map[string][]TaintSource
+	Trusted       map[string]bool
+	TaintOverflow bool
 }
 
 // Clone returns a copy that shares nothing mutable with s, so a caller can
@@ -21,6 +29,18 @@ type Session struct {
 func (s *Session) Clone() *Session {
 	c := *s
 	c.Task = s.Task.clone()
+	if s.Untrusted != nil {
+		c.Untrusted = make(map[string][]TaintSource, len(s.Untrusted))
+		for k, v := range s.Untrusted {
+			c.Untrusted[k] = append([]TaintSource(nil), v...)
+		}
+	}
+	if s.Trusted != nil {
+		c.Trusted = make(map[string]bool, len(s.Trusted))
+		for k, v := range s.Trusted {
+			c.Trusted[k] = v
+		}
+	}
 	return &c
 }
 
