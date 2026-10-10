@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from ast import literal_eval
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -294,13 +295,124 @@ class ACFToolsExecutor(ToolsExecutor):
         return query, runtime, env, [*messages, *results], extra_args
 
 
-def make_llm(model: str, base_url: str | None) -> BasePipelineElement:
-    """The agent model, through an OpenAI-compatible endpoint at temperature 0."""
+_BARE_CALL = re.compile(r"\bcall:\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?=\{)")
+_BARE_KEY = re.compile(r'([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:')
+_GEMMA_QUOTE = '<|"|>'
+
+
+class UnparsedToolCall(RuntimeError):
+    """The model tried to call a tool in a form the parser could not read."""
+
+
+def _balanced_object(text: str, start: int) -> str | None:
+    """The {...} starting at text[start], respecting double-quoted strings."""
+    depth, in_string, escaped = 0, False, False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    return None
+
+
+def parse_bare_call(completion: str) -> FunctionCall | None:
+    """A tool call written as `call:name{...}`.
+
+    Gemma writes calls this way, whatever format the prompt asks for, and
+    often with unquoted keys (`{n:100}`) or its own string quote. Arguments
+    are read as JSON first, then with those two repaired. Returns None if the
+    text has no such call, and raises UnparsedToolCall if it has one whose
+    arguments cannot be read: a call that is silently dropped would be scored
+    as a model that chose to do nothing.
+    """
+    match = _BARE_CALL.search(completion)
+    if match is None:
+        return None
+    raw = _balanced_object(completion.replace(_GEMMA_QUOTE, '"'), match.end())
+    for candidate in ([raw, _BARE_KEY.sub(r'\1"\2":', raw)] if raw else []):
+        try:
+            args = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(args, dict):
+            return FunctionCall(function=match.group(1), args=args)
+    raise UnparsedToolCall(f"could not read the arguments of: {completion[match.start():][:200]!r}")
+
+
+class PromptToolLLM(BasePipelineElement):
+    """Tool calling through the prompt, for servers without a tool-call parser.
+
+    Uses upstream's LocalLLM prompt and output parser unchanged. It differs in
+    two ways. Upstream's request helper turns any API error into an empty
+    answer, which would be scored as a model that did nothing; here the error
+    is raised, so the case is recorded as an error and left out of the scores.
+    And when upstream's parser finds no call, `call:name{json}` is accepted
+    too (see parse_bare_call).
+    """
+
+    def __init__(self, client: Any, model: str, tool_role: str) -> None:
+        self.client = client
+        self.model = model
+        self.tool_role = tool_role
+
+    def query(self, query: str, runtime: FunctionsRuntime, env: Env = EmptyEnv(),
+              messages: Sequence[ChatMessage] = [], extra_args: dict = {}):  # noqa: B006
+        from agentdojo.agent_pipeline.llms import local_llm  # noqa: PLC0415
+        from agentdojo.types import get_text_content_as_str  # noqa: PLC0415
+
+        sent = []
+        for message in messages:
+            role, text = message["role"], get_text_content_as_str(message["content"] or [])
+            if role == "system":
+                text = local_llm._make_system_prompt(text, runtime.functions.values())
+            elif role == "tool":
+                role = self.tool_role
+                if message.get("error") is not None:
+                    text = json.dumps({"error": message["error"]})
+                else:
+                    text = json.dumps({"result": "Success" if text == "None" else text})
+            sent.append({"role": role, "content": text})
+        response = self.client.chat.completions.create(
+            model=self.model, messages=sent, temperature=0.0, seed=0,
+        )
+        completion = response.choices[0].message.content
+        if completion is None:
+            raise RuntimeError("the model returned no content")
+        output = local_llm._parse_model_output(completion)
+        if not output["tool_calls"]:
+            bare = parse_bare_call(completion)
+            if bare is not None:
+                output["tool_calls"] = [bare]
+        return query, runtime, env, [*messages, output], extra_args
+
+
+def make_llm(model: str, base_url: str | None, tool_calling: str = "native",
+             tool_role: str = "user") -> BasePipelineElement:
+    """The agent model, through an OpenAI-compatible endpoint at temperature 0.
+
+    native uses the server's own tool calling, as upstream does for OpenAI
+    models. prompt describes the tools in the system prompt and parses calls
+    from the answer, as upstream does for local models.
+    """
     import openai  # noqa: PLC0415
     from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM  # noqa: PLC0415
 
     api_key = os.environ.get("OPENAI_API_KEY") or ("local" if base_url else None)
     client = openai.OpenAI(base_url=base_url, api_key=api_key)
+    if tool_calling == "prompt":
+        return PromptToolLLM(client, model, tool_role)
     return OpenAILLM(client, model)
 
 

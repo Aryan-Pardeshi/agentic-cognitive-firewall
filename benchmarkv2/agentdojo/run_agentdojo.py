@@ -375,6 +375,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--benchmark-version", default=DEFAULT_BENCHMARK_VERSION)
     parser.add_argument("--model", default=DEFAULT_MODEL, help="agent model (agent mode)")
     parser.add_argument("--base-url", default=None, help="OpenAI-compatible endpoint (agent mode)")
+    parser.add_argument("--tool-calling", choices=("native", "prompt"), default="native",
+                        help="native: the server's tool calling. prompt: tools described in the "
+                             "system prompt, for servers without a tool-call parser (agent mode)")
+    parser.add_argument("--tool-role", default="user",
+                        help="chat role tool results are sent under with --tool-calling prompt")
     parser.add_argument("--user-tasks", default=None, help="comma list of user task IDs")
     parser.add_argument("--injection-tasks", default=None, help="comma list of injection task IDs")
     parser.add_argument("--limit", type=int, default=None, help="user tasks per suite")
@@ -439,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
         user_tasks=_csv(args.user_tasks), injection_tasks=_csv(args.injection_tasks),
         limit=args.limit, benign=not args.no_benign,
     )
-    llm = adapter.make_llm(args.model, args.base_url) if args.mode == "agent" else None
+    llm = adapter.make_llm(args.model, args.base_url, args.tool_calling, args.tool_role) if args.mode == "agent" else None
 
     records_path = out_dir / "records.jsonl"
     done = {case_key(r) for r in read_records(records_path) if not r.get("error")}
@@ -512,6 +517,9 @@ def main(argv: list[str] | None = None) -> int:
                     "model": args.model if args.mode == "agent" else "none (replay)",
                     "attack": args.attack,
                     "attack_model_name": plan.attack_model_name,
+                    "base_url": args.base_url if args.mode == "agent" else None,
+                    "tool_calling": args.tool_calling if args.mode == "agent" else None,
+                    "tool_role": args.tool_role if args.tool_calling == "prompt" else None,
                     "arms": args.arms,
                     "suites": plan.suites,
                     "user_tasks": args.user_tasks,

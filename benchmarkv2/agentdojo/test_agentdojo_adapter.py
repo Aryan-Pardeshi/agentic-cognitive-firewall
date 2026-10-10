@@ -206,3 +206,62 @@ def test_agent_mode_blocked_prompt_aborts_before_the_model():
     guard = acf_guard.Guard(FakeFirewall(prompt_verdict=Decision.BLOCK), ARMS["detect"], ())
     outcome = adapter.agent_case(plan, case(None), guard, llm)
     assert outcome["utility"] is False and guard.calls == [] and len(llm.calls) == 2
+
+
+# ── prompt-based tool calling ────────────────────────────────────────────────
+
+
+class FakeChatClient:
+    def __init__(self, reply: str | None) -> None:
+        self.reply = reply
+        self.sent: list[dict] = []
+        self.chat = self
+        self.completions = self
+
+    def create(self, **request):
+        self.sent = request["messages"]
+        message = type("Message", (), {"content": self.reply})()
+        return type("Response", (), {"choices": [type("Choice", (), {"message": message})()]})()
+
+
+def test_bare_call_parser_reads_gemma_style_calls():
+    call = adapter.parse_bare_call('thought\ncall:read_file{"file_path": "bill.txt"}')
+    assert call.function == "read_file" and call.args == {"file_path": "bill.txt"}
+    assert adapter.parse_bare_call("call:get_balance{}").args == {}
+    assert adapter.parse_bare_call("I will call: nothing here") is None
+    assert adapter.parse_bare_call("call:get_most_recent_transactions{n:100}").args == {"n": 100}
+    quoted = 'call:send_money{recipient:<|"|>GB29NWBK60161331926819<|"|>,amount:98.7,subject:<|"|>a: b, c<|"|>}'
+    assert adapter.parse_bare_call(quoted).args == {
+        "recipient": "GB29NWBK60161331926819", "amount": 98.7, "subject": "a: b, c"}
+    nested = adapter.parse_bare_call('call:f{"a": {"b": "}"}, "c": [1, 2]} trailing text')
+    assert nested.args == {"a": {"b": "}"}, "c": [1, 2]}
+
+
+def test_bare_call_parser_raises_on_a_call_it_cannot_read():
+    for broken in ("call:send_money{recipient: broken", "call:send_money{recipient: no quotes}"):
+        with pytest.raises(adapter.UnparsedToolCall):
+            adapter.parse_bare_call(broken)
+
+
+@pytest.mark.parametrize("reply", [
+    '<function=read_file>{"file_path": "bill-december-2023.txt"}</function>',
+    'thought\ncall:read_file{"file_path": "bill-december-2023.txt"}',
+])
+def test_prompt_tool_llm_parses_both_call_formats_and_relays_results(reply):
+    plan = plan_for("agent")
+    client = FakeChatClient(reply)
+    llm = adapter.PromptToolLLM(client, "m", tool_role="user")
+    guard = acf_guard.Guard(None, ARMS["none"], ())
+    # The fake always answers with the same call, so the loop runs to its cap.
+    adapter.agent_case(plan, case(None), guard, llm)
+    assert guard.calls and all(c["tool"] == "read_file" for c in guard.calls)
+    assert client.sent[0]["role"] == "system" and "read_file" in client.sent[0]["content"]
+    relayed = [m for m in client.sent if m["content"].startswith('{"result"')]
+    assert relayed and all(m["role"] == "user" for m in relayed)
+
+
+def test_prompt_tool_llm_raises_when_the_model_returns_nothing():
+    plan = plan_for("agent")
+    llm = adapter.PromptToolLLM(FakeChatClient(None), "m", tool_role="user")
+    with pytest.raises(RuntimeError):
+        adapter.agent_case(plan, case(None), acf_guard.Guard(None, ARMS["none"], ()), llm)

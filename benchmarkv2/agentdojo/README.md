@@ -100,7 +100,7 @@ python benchmarkv2/agentdojo/run_agentdojo.py --mode replay
 
 # Agent mode pilot: one suite, three user tasks, two arms.
 python benchmarkv2/agentdojo/run_agentdojo.py --mode agent --model gemma4 \
-    --base-url http://localhost:8000/v1 --suites banking --limit 3 --arms none,full-task-taint
+    --base-url http://localhost:8000/v1 --tool-calling prompt     --suites banking --limit 3 --arms none,full-task-taint
 
 # Agent mode, full run.
 python benchmarkv2/agentdojo/run_agentdojo.py --mode agent --model gpt-4o-2024-05-13
@@ -115,7 +115,17 @@ and CaMeL report; `tool_knowledge` is the one FIDES uses), `--user-tasks`,
 `--injection-tasks`, `--no-benign`, `--workers`, `--semantic`,
 `--benchmark-version`.
 
-The model server must support OpenAI tool calling. The injected text addresses
+Tool calling has two settings. `--tool-calling native` (default) uses the
+server's own tool calling, as upstream does for OpenAI models. `--tool-calling
+prompt` is for a server without a tool-call parser, such as vLLM started
+without `--enable-auto-tool-choice`: the tools are described in the system
+prompt with upstream's local-model prompt, and calls are parsed from the
+answer. Besides upstream's `<function=name>{...}</function>` format it accepts
+`call:name{...}`, which Gemma writes whatever the prompt asks for. A call whose
+arguments cannot be read makes the case an error, not a silent non-call. Tool
+results go back under `--tool-role` (default `user`).
+
+The injected text addresses
 the model by name; a model AgentDojo does not know is addressed as "Local
 model", as upstream does for its own local providers.
 
