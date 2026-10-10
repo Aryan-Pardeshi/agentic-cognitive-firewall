@@ -3,26 +3,45 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml)
 
-A Zero Trust security layer for LLM agents. Enforces policy-driven validation at every point an agent ingests input — not just at the front door.
+ACF-SDK is a security layer for LLM agents. It checks everything an agent takes
+in and every action it is about to take — the user's prompt, retrieved
+documents, tool output, tool calls and memory — against policies you write as
+code, and returns **ALLOW**, **SANITISE** or **BLOCK**. Decisions are made in a
+separate sidecar process the agent cannot reach into, so they do not depend on
+the agent's code or on which model runs it.
 
-> **Status: Phase 3 complete — OPA policy engine running. Phase 4 (OTel observability + integration tests) next.**
-
-**New to ACF-SDK?** Start with the [layman overview](docs/overview.md) to understand what the SDK and sidecar do before diving into the details below.
+**New here?** The [plain-language overview](docs/overview.md) explains what the
+SDK and sidecar do before any of the detail below.
 
 ---
 
-## The problem
+## Why this exists
 
-LLM agents don't have a single input boundary. They ingest from users, RAG pipelines, tool outputs, and memory stores — each a potential attack surface. A single perimeter check at ingress misses everything that arrives later.
+An LLM agent does not have one front door. It reads the user's message, pulls
+documents from a vector store, calls tools and reads their output, and reads and
+writes memory. Any of these can carry instructions an attacker planted, and the
+indirect ones — a poisoned web page, an email, a tool response — reach the model
+long after a front-door filter has looked at the prompt. Because agents act
+through tools, a successful injection is not just a wrong answer: it can send
+email, move money or delete files.
 
-ACF-SDK distributes enforcement across the full agent lifecycle:
+The model itself is not a reliable last line of defence. Frontier models resist
+many known attacks, but smaller and self-hosted models often do not, and even
+robust models fail against attacks tailored to them. ACF-SDK takes the position
+that enforcement should hold regardless of the model:
 
-| Where | Threat |
-|---|---|
-| User prompt arrives | Direct prompt injection — override system instructions |
-| RAG chunks injected | Indirect injection — malicious instructions in retrieved documents |
-| Before tool executes | Tool abuse — unsafe tool or malicious parameters |
-| Before memory read/write | Memory poisoning — malicious values in persistent agent state |
+- **Check every channel**, not just the prompt: each point where content enters
+  the agent or an action leaves it is an enforcement point.
+- **Decide outside the agent.** The policy decision point is an isolated Go
+  sidecar. The agent process only holds a thin client.
+- **Write policy as code.** Rules are Rego (Open Policy Agent), versioned and
+  hot-reloaded; detection data (patterns, weights) is kept separate from
+  decision logic.
+- **Use what the application knows.** A deployment can declare what a task is
+  allowed to do — which tools, which argument values, which sources it trusts —
+  and the sidecar enforces that for the whole agent session. This is what stops
+  an attacker using a tool the task legitimately needs, such as sending an email
+  to an address an injected page planted.
 
 ---
 
@@ -30,250 +49,267 @@ ACF-SDK distributes enforcement across the full agent lifecycle:
 
 ![ACF-SDK architecture](docs/architecture.png)
 
-Two zones separated by a hard OS process boundary:
+Two zones separated by an operating-system process boundary:
 
-- **PEP** — a thin SDK inside your agent process. Signs payloads and dispatches over IPC.
-- **PDP** — an isolated Go sidecar. All policy evaluation happens here. The agent cannot reach inside it.
+- **PEP (policy enforcement point)** — a thin SDK inside the agent process. It
+  wraps each check as a signed request and sends it to the sidecar.
+- **PDP (policy decision point)** — a Go sidecar. All detection and policy
+  evaluation happens here.
 
-The sidecar runs every payload through a four-stage pipeline — validate, normalise, scan, aggregate — then evaluates OPA (Rego) policies to produce a structured decision.
+They talk over a Unix domain socket (`/tmp/acf.sock`) on Linux and macOS, or a
+named pipe (`\\.\pipe\acf`) on Windows. Every request is signed with
+HMAC-SHA256 and carries a fresh nonce; a bad signature or replayed nonce is
+dropped before the payload is parsed.
 
-Every decision is one of three outcomes:
+### Enforcement points (hooks)
+
+| Hook | Called | Stops |
+|---|---|---|
+| `on_prompt` | When user input arrives | Direct prompt injection |
+| `on_context` | Before retrieved chunks enter the model's context | Indirect injection in documents |
+| `on_tool_result` | Before the agent reads a tool's output | Indirect injection in tool output, told apart by the producing tool |
+| `on_tool_call` | Before a tool runs | Disallowed tools, dangerous parameters, and the attacker's values in a legitimate tool's arguments |
+| `on_memory` | Before a memory read or write | Memory poisoning |
+| `on_task` | When a session starts (sent for you) | Declares the session's task scope |
+
+### Decisions
 
 | Decision | Meaning |
 |---|---|
-| `ALLOW` | Payload is clean — pass through |
-| `SANITISE` | Payload contains a threat — return scrubbed version with warning markers |
-| `BLOCK` | Hard block — agent must not proceed with this input |
+| `ALLOW` | Pass the input or action through unchanged |
+| `SANITISE` | Use the cleaned version the sidecar returns |
+| `BLOCK` | Do not proceed |
 
-Enforcement latency: **4–8ms typical, ~10ms worst case.** Observability spans emit asynchronously and never touch the enforcement path.
-
----
-
-<!-- ## Quick start (Python)
-
-```python
-from acf import Firewall, Decision
-
-firewall = Firewall()  # connects to sidecar at /tmp/acf.sock
-
-# At message ingress
-result = firewall.on_prompt(user_message)
-if result.decision == Decision.BLOCK:
-    raise ValueError("Input blocked by firewall")
-if result.decision == Decision.SANITISE:
-    user_message = result.sanitised  # use scrubbed version
-
-# Before RAG injection
-chunks = firewall.on_context(retrieved_docs)
-safe_chunks = [c.sanitised for c in chunks if c.decision != Decision.BLOCK]
-
-# Before tool execution
-result = firewall.on_tool_call(tool_name, tool_params)
-if result.decision == Decision.BLOCK:
-    raise ToolException("Tool call blocked by firewall")
-
-# Before memory write
-result = firewall.on_memory(key, value, op="write")
-if result.decision != Decision.ALLOW:
-    raise MemoryException("Memory write blocked by firewall")
-```
-
-### LangGraph adapter
-
-```python
-from acf.adapters.langgraph import FirewallNode
-from langgraph.graph import StateGraph
-
-graph = StateGraph(AgentState)
-graph.add_node("firewall", FirewallNode(firewall))
-graph.add_node("agent", your_agent_node)
-graph.add_edge("firewall", "agent")
-``` -->
-
----
-
-## Architecture
-
-### Seam 1 — Hook registry
-
-![Hook registry](docs/hook-registry.png)
-
-Hooks self-register at startup. The pipeline only calls whatever is registered. Adding a new hook (v2: `on_tool_result`, `on_outbound`, `on_subagent`) is purely additive — the pipeline, IPC layer, and sidecar core do not change.
-
-### Seam 2 — Risk context object
-
-![Risk context object](docs/risk_context_object.png)
-
-A single typed payload flows through every pipeline stage. The schema is fixed across v1 and v2 — the `state` field is null in v1 and populated by a TTL session store in v2. Policy files work unchanged across both versions.
-
-### Sidecar pipeline
+### The pipeline
 
 ```
-validate → normalise → scan → aggregate → OPA policy engine → executor
+validate → session → normalise → scan → aggregate → OPA policy → executor
 ```
 
 | Stage | What it does |
 |---|---|
-| **Validate** | HMAC verify, nonce replay check, schema validation |
-| **Normalise** | URL/Base64/hex decode, NFKC unicode, zero-width strip, leetspeak clean |
-| **Scan** | Aho-Corasick lexical scan, allowlist checks, integrity verification |
-| **Aggregate** | Combines signals into risk score 0.0–1.0 with provenance trust weighting |
-| **Policy engine** | OPA (Rego) evaluates rules per hook type, returns structured decision |
-| **Executor** | Performs string transforms declared by OPA on SANITISE decisions |
+| Validate | Schema checks; assigns provenance per hook and sets aside fields the client must not control |
+| Session | Loads the session's state (task scope, values read so far) for policy to use |
+| Normalise | Decodes URL and Base64, NFKC-normalises Unicode, strips zero-width characters, undoes leetspeak |
+| Scan | Aho-Corasick pattern scan, allowlist and parameter checks |
+| Aggregate | Combines signals into a 0.0–1.0 risk score, weighted by provenance |
+| OPA policy | Rego decides per hook, using the score, signals and session state |
+| Executor | Applies the transformation a SANITISE asks for |
 
-Short-circuits to BLOCK at any stage on a hard signal.
+A hard block at any stage short-circuits to BLOCK.
+
+### Sessions and the application policy layer
+
+Calls made through `firewall.session()` are evaluated as one agent run. On top
+of the per-request checks, a session can:
+
+- **declare a task scope** — the tools the task needs and bounds on their
+  arguments; anything outside it is blocked, and a scope can only narrow global
+  policy, never widen it;
+- **taint values from untrusted content** — email addresses, URLs, IBANs and
+  account numbers the agent read in documents or tool output; a consequential
+  tool (`send_email`, `send_money`, ...) whose argument repeats one is blocked
+  unless the user or developer vouched for the value;
+- **trust specific tools' output** — so an internal payment API's response can
+  flow into a payment while the same IBAN read on a web page cannot.
+
+See [docs/application-policy-layer.md](docs/application-policy-layer.md).
 
 ---
 
-## Policies
-
-Policies are Rego files, hot-reloadable without restarting the sidecar. Logic and data are kept separate so pattern library updates never require touching decision rules.
-
-```
-policies/v1/
-├── prompt.rego          instruction override · role escalation · jailbreak
-├── context.rego         source trust · embedded instruction · structural anomaly
-├── tool.rego            allowlist · shell metachar · path traversal · network
-├── memory.rego          HMAC stamp/verify · write scan · provenance
-└── data/
-    ├── policy_config.yaml         thresholds · allowlists · trust weights
-    └── jailbreak_patterns.json    versioned pattern library
-```
-
-Test policies with `make opa-test` — runs the full Rego test suite using `opa test`.
-
----
-
-## Getting started
+## Quick start
 
 ### Prerequisites
 
-- Go 1.25.14+
-- Python 3.10+
-- [OPA](https://www.openpolicyagent.org/docs/latest/#running-opa) (for policy tests, Phase 3+)
+- Go 1.25+ (to build the sidecar)
+- Python 3.10+ (the SDK has no required dependencies)
 
-### 1. Generate an HMAC key
+### 1. Create a shared key
 
 ```bash
 export ACF_HMAC_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 ```
 
-Keep this value — both the sidecar and the SDK must use the same key.
+The sidecar and the SDK must use the same key.
 
 ### 2. Build and run the sidecar
 
 ```bash
-cd sidecar && go build -o ../bin/acf-sidecar ./cmd/sidecar
+make build            # or: cd sidecar && go build -o ../bin/acf-sidecar ./cmd/sidecar
 ./bin/acf-sidecar
-# sidecar: OPA engine ready (policy_dir=../policies/v1)
+# sidecar: OPA engine ready (policy_dir=.../policies/v1)
 # sidecar: pipeline ready (mode=strict, block_threshold=0.85)
 # sidecar: listening on /tmp/acf.sock
 ```
 
-Or with `make`:
+It reads `config/sidecar.yaml` (override with `ACF_CONFIG`) and the policies in
+`policies/v1/`. Set `ACF_SOCKET_PATH` to listen somewhere else.
 
-```bash
-make build && ./bin/acf-sidecar
-```
-
-### 3. Install the Python SDK
+### 3. Install the SDK and make some calls
 
 ```bash
 pip install -e sdk/python
 ```
 
-### 4. Send your first request
+```python
+from acf import Firewall, Decision, SanitiseResult
+
+fw = Firewall()   # reads ACF_HMAC_KEY and ACF_SOCKET_PATH
+
+fw.on_prompt("What is the capital of France?")             # Decision.ALLOW
+fw.on_prompt("Ignore previous instructions and ...")       # Decision.BLOCK
+
+for chunk in fw.on_context(retrieved_docs):                # one result per chunk
+    if chunk.decision is Decision.SANITISE:
+        use(chunk.sanitised_text)
+
+result = fw.on_tool_call("search", {"query": "weather"})
+```
+
+### 4. Use a session with a task scope
 
 ```python
-from acf import Firewall, Decision
-
-fw = Firewall()  # reads ACF_HMAC_KEY and connects to /tmp/acf.sock
-
-result = fw.on_prompt("hello world")
-assert result == Decision.ALLOW
-print("Round-trip OK:", result)
+with fw.session(
+    allowed_tools=["get_balance", "send_money", "web_fetch"],
+    trusted_values=["GB29NWBK60161331926819"],   # a payee the user saved
+    tool_constraints={"send_money": {"amount": {"max": 100}}},
+) as s:
+    s.on_prompt(user_message)
+    page = s.on_tool_result("web_fetch", html)   # screened before the agent reads it
+    if isinstance(page, SanitiseResult):
+        html = page.sanitised_text
+    decision = s.on_tool_call("send_money", {"recipient": iban, "amount": 20})
 ```
 
-### 5. Run the test suites
+`session()` raises `FirewallError` if the sidecar rejects the scope.
+
+### Optional: semantic scanning
+
+The lexical scan in the sidecar catches known phrasings. For paraphrases, the
+SDK can add an embedding-based scanner (TF-IDF or a sentence-transformer):
 
 ```bash
-# Go unit tests
-cd sidecar && go test ./... -v
-
-# Python unit tests
-cd sdk/python && python -m pytest -v
-
-# Or both via make (from repo root)
-make test            # Go tests
-make sdk-test-python # Python tests
+pip install -e 'sdk/python[scanners]'
 ```
 
-### Docker (sidecar + optional OTel collector)
+```python
+fw = Firewall(enable_semantic_scan=True, semantic_backend="sentence-transformer")
+```
+
+### Docker
 
 ```bash
-# Set your key in the environment first, then:
-docker compose up -d
-
-# With observability (OTel collector):
-docker compose --profile observability up -d
+docker compose up -d                                  # sidecar
+docker compose --profile observability up -d          # plus an OpenTelemetry collector
+cd demo && docker compose up --build                  # six attack scenarios, no API keys
 ```
 
 ---
 
-## Project structure
+## What's in this repo
 
-```
-acf-sdk/
-├── sidecar/              Go enforcement kernel (PDP)
-├── sdk/
-│   ├── python/           Python SDK v1 — zero external dependencies
-│   └── typescript/       TypeScript SDK v2 — deferred until v1 is stable
-├── policies/v1/          Rego policies + data
-├── tests/integration/    33-payload adversarial test suite
-├── config/               Sidecar configuration
-└── docs/                 Architecture and policy authoring guides
-```
+| Path | What it is |
+|---|---|
+| [`sidecar/`](sidecar/) | The Go policy decision point: IPC transport and crypto, the pipeline stages, the OPA engine, the session store, value tainting, and the hook registry |
+| [`sdk/python/`](sdk/python/) | The Python SDK: `Firewall`, `Session`, the optional semantic scanner, and framework adapters |
+| [`sdk/typescript/`](sdk/typescript/) | An early TypeScript SDK, not yet at parity with Python |
+| [`policies/v1/`](policies/v1/) | Rego policies, one per hook, with their unit tests, plus `data/` (thresholds, allowlists, trust settings, signal weights, the pattern library) |
+| [`config/`](config/) | Sidecar configuration (`sidecar.yaml`, with an annotated example) |
+| [`tests/integration/`](tests/integration/) | End-to-end tests against the real sidecar binary: an 80-case adversarial corpus, gap probes, forgery probes and session flows |
+| [`examples/`](examples/) | Runnable scripts showing which rule fires for each kind of input |
+| [`demo/`](demo/) | A Docker demo of six attack scenarios |
+| [`benchmarks/`](benchmarks/) | Replays public benchmark payloads through ACF with no model (detector catch rates) |
+| [`benchmarkv2/`](benchmarkv2/) | Evaluations for the paper: runtime overhead, InjecAgent with a live agent, and AgentDojo and Agent Security Bench harnesses (scaffolds) |
+| [`docs/`](docs/) | Architecture, design notes, threat analysis and the paper sources |
+| [`scripts/`](scripts/) | Utilities, such as measuring the semantic scanner's detection rate |
+
+### Framework integrations
+
+| Integration | Status |
+|---|---|
+| LangGraph — `acf.adapters.langgraph.FirewallNode` | Any hook as a graph node; accepts a `Session` for task scope |
+| Agent Kernel — `acf.adapters.agent_kernel.ACFInputGuardrail` | Input guardrail |
+| LangChain — `acf.adapters.langchain` | Placeholder |
+| TypeScript — `sdk/typescript` | Early: client and a LangGraph adapter |
 
 ---
 
-## Roadmap
+## Testing
 
-| Phase | Goal | Status |
+```bash
+make test               # Go unit tests, including the Rego policy tests
+make sdk-test-python    # Python SDK tests
+make integration        # end-to-end tests against a freshly built sidecar
+make opa-test           # Rego tests with the opa binary, if you have it
+```
+
+CI runs the Go and Python tests on Ubuntu and the integration suite on Ubuntu
+and Windows.
+
+---
+
+## Evaluation
+
+| What | Where | Result so far |
 |---|---|---|
-| 1 | Wire protocol + HMAC/nonce crypto | **Complete** — 23 Go tests, 35 Python tests |
-| 2 | Pipeline stages (validate/normalise/scan/aggregate) | **Complete** — 49 Go tests |
-| 3 | OPA integration + Rego policies | **Complete** — real policy evaluation, sanitise executor, hot reload |
-| 4 | OTel observability + integration test suite | Pending |
-| v2 | Stateful session risk, additional hooks, TypeScript SDK | Deferred |
+| Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/) | On a Windows laptop over named pipes: an SDK hook call costs about 0.25–0.3 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. Inside the sidecar a request takes about 0.2 ms, two-thirds of it policy evaluation. Large payloads cost more: a 64 KB chunk takes about 6 ms, mostly normalisation |
+| InjecAgent, live agent | [`benchmarkv2/injecagent/`](benchmarkv2/injecagent/) | Runs with any OpenAI-compatible model. The models tried so far resist InjecAgent on their own, so it measures model robustness more than ACF |
+| AgentDojo, Agent Security Bench | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/), [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harnesses scaffolded; upstream adapters to write |
+| Detector catch rates | [`benchmarks/`](benchmarks/) | Model-free replay of public datasets |
+
+How each benchmark is run is in [`benchmarkv2/README.md`](benchmarkv2/README.md).
 
 ---
 
-## Design principles
+## Security model and limits
 
-See [PHILOSOPHY.md](PHILOSOPHY.md) for the full design rationale. The short version:
+- **The enforcement point is in-process.** ACF protects an honest agent from
+  injected content and from forged or misconfigured fields. It cannot stop a
+  fully compromised agent process from simply not calling the hooks; that would
+  need tools to be reachable only through the sidecar.
+- **Detection is best-effort; policy is the guarantee.** Pattern and semantic
+  detection miss paraphrased and novel attacks. Task scope and argument tainting
+  do not depend on recognising an attack, which is why they carry the stronger
+  claims.
+- **Tainting covers the value types it extracts**: email addresses, URLs, IBANs
+  and long numbers. A name or a paraphrased instruction is not tracked.
+- **Memory reads still trust a client-supplied integrity flag.** A proper fix
+  needs a sidecar-signed stamp and a wire protocol change.
 
-- **Zero Trust** — all inputs are untrusted by default, regardless of source
-- **Policy-as-code** — Rego rules are version-controlled, auditable, and hot-reloadable
-- **Minimal overhead** — 4–8ms enforcement adds no meaningful latency to agent workflows
-- **Additive by design** — new hooks, policy versions, and SDK languages never require changing existing components
-- **Framework-agnostic** — works with LangGraph, LangChain, or any custom agent loop
+[docs/mitre-atlas-analysis.md](docs/mitre-atlas-analysis.md) maps coverage and
+gaps against MITRE ATLAS.
+
+---
+
+## Status and roadmap
+
+| | Goal | Status |
+|---|---|---|
+| Phase 1 | Wire protocol, HMAC and nonce crypto | Done |
+| Phase 2 | Pipeline stages | Done |
+| Phase 3 | OPA integration and Rego policies | Done |
+| Phase 4 | Integration test suite; OpenTelemetry observability | Test suite done; OpenTelemetry not started (a per-request timing log exists) |
+| v2 | Sessions, `on_tool_result`, task scope, argument tainting | Done on `feat/application-policy-layer` |
+| v2 | `on_outbound`, `on_subagent`, accumulation policies, TypeScript parity, signed memory integrity | Planned |
 
 ---
 
 ## Documentation
 
-- [MITRE ATLAS analysis](docs/mitre-atlas-analysis.md) — threat-category mapping, coverage, gaps, residual risk
-- [Architecture](docs/architecture.md) — full system design, IPC wire protocol, pipeline stages
-- [Phase 1](docs/phase1.md) — wire protocol and crypto implementation
-- [Phase 2](docs/phase2.md) — pipeline stages, strict_mode switch, scoring
-- [Phase 3](docs/phase03.md) — OPA engine, signal format, sanitise executor, hot reload
+- [Overview](docs/overview.md) — plain-language introduction
+- [Architecture](docs/architecture.md) — full design, wire protocol, pipeline
+- [Application policy layer](docs/application-policy-layer.md) — sessions, task scope, tool output, tainting
+- [Pipeline](docs/pipeline.md) — stage-by-stage detail
+- [Semantic scanner](docs/semantic-scanner.md) — the optional embedding-based detector
 - [Crypto](docs/crypto.md) — HMAC signing and nonce replay protection
-- [Policy authoring](docs/policy-authoring.md) — how to write and test Rego policies
-- [Philosophy](PHILOSOPHY.md) — design principles and threat model rationale
-- [Implementation log](docs/implementation_log.md) — chronological record of implementation decisions, trade-offs, and corrections
+- [MITRE ATLAS analysis](docs/mitre-atlas-analysis.md) — threat mapping and residual risk
+- [Phase 1](docs/phase1.md) · [Phase 2](docs/phase2.md) · [Phase 3](docs/phase3.md) — implementation notes per phase
+- [Policies](policies/v1/README.md) — the Rego policies and their coverage
+- [Philosophy](PHILOSOPHY.md) — design principles
+- [Implementation log](docs/implementation_log.md) — decisions, trade-offs and corrections over time
 
 ---
 
 ## License
 
-See [LICENSE](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
