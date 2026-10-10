@@ -129,6 +129,50 @@ The injected text addresses
 the model by name; a model AgentDojo does not know is addressed as "Local
 model", as upstream does for its own local providers.
 
+## Full run on the model's machine
+
+`run_overnight.sh` does the whole agent-mode run in three steps. It needs git,
+Python 3.10+, Go (to build the sidecar) and the model served with tool calling
+on, for vLLM `--enable-auto-tool-choice --tool-call-parser <parser for the model>`.
+
+```sh
+git clone https://github.com/c2siorg/acf-sdk.git && cd acf-sdk
+git checkout feat/agentdojo-adapter
+
+# 1. Once: venv, agentdojo, sidecar build, sidecar preflight, tests. About 2 minutes.
+benchmarkv2/agentdojo/run_overnight.sh setup
+
+# 2. Pilot: 24 banking cases, about a minute. Check it before the long run.
+benchmarkv2/agentdojo/run_overnight.sh pilot
+
+# 3. Full run: 1,046 cases per arm, five arms. Leave it running.
+nohup benchmarkv2/agentdojo/run_overnight.sh full > agentdojo-full.log 2>&1 &
+tail -f agentdojo-full.log
+```
+
+Settings are environment variables: `MODEL` (default `gemma4`), `BASE_URL`
+(default `http://localhost:8000/v1`), `ARMS`, `WORKERS` (default 4),
+`PYTHON` (default `python3`) and `TOOL_CALLING` (default `native`). For example
+`WORKERS=8 ARMS=none,gate-task,full-task-taint benchmarkv2/agentdojo/run_overnight.sh full`.
+
+**What a good pilot looks like.** In `summary.md` in the results directory it
+prints: `Errors` is 0 in both rows, ASR in the `none` row is above 0 (the
+attacks reach the model; on gemma4 it was 6 of 9), and ASR in the
+`full-task-taint` row is lower. If every case is an error, the server is not
+reachable or tool calling is off; the `error` field in `records.jsonl` says
+which. If tool calling cannot be turned on, set `TOOL_CALLING=prompt`.
+
+**Progress and resuming.** The log prints a line every 50 cases, and
+`wc -l < <results dir>/records.jsonl` is the count so far. If the run stops for
+any reason, run step 3 again: it continues the same results directory, keeps
+finished cases and retries the ones that errored. `summary.md` is written when
+a run reaches the end, so a stopped run has only `records.jsonl` until then.
+To start a new run instead, delete `benchmarkv2/agentdojo/.overnight-run`.
+
+**Bringing the results back.** Copy the whole results directory.
+`records.jsonl` is not tracked by git; it is what later analysis needs, so do
+not bring back `summary.md` alone.
+
 ## Outputs
 
 `results/<UTC timestamp>-<mode>-<model>/`:

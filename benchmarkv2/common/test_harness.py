@@ -127,3 +127,16 @@ def test_replace_top_level_yaml_value_requires_the_key():
 
 def test_taint_is_off_in_every_shared_arm():
     assert not any(arm.taint for arm in harness.ARMS.values())
+
+
+def test_sidecar_socket_path_is_short_and_distinct():
+    first, second = harness.sidecar_socket_path("agentdojo", 0), harness.sidecar_socket_path("agentdojo", 1)
+    assert first != second
+    # sockaddr_un holds about 100 characters; a pipe name has no such limit.
+    assert harness.IS_WINDOWS or len(first) < 100
+
+
+def test_sidecar_pool_makes_its_paths_absolute(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pool = harness.SidecarPool(Path("bin") / "sidecar", Path("work"), harness.FirewallFactory())
+    assert pool.binary.is_absolute() and pool.work_dir == tmp_path.resolve() / "work"

@@ -23,6 +23,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.request
@@ -270,6 +271,18 @@ def run_preflight(firewall: Firewall, allowlist: tuple[str, ...]) -> list[dict[s
     return results
 
 
+def sidecar_socket_path(name: str, number: int) -> str:
+    """Where sidecar `number` of this process listens.
+
+    A named pipe on Windows. Elsewhere a socket in the temp directory, not
+    next to the run's files: a Unix socket path is limited to about 100
+    characters, and a results directory inside a checkout is often deeper.
+    """
+    if IS_WINDOWS:
+        return rf"\\.\pipe\acf_{name}_{os.getpid()}_{number}"
+    return str(Path(tempfile.gettempdir()) / f"acf_{name}_{os.getpid()}_{number}.sock")
+
+
 class FirewallFactory:
     """One SDK client per worker thread and sidecar."""
 
@@ -300,8 +313,10 @@ class SidecarPool:
 
     def __init__(self, binary: Path, work_dir: Path, factory: FirewallFactory,
                  name: str = "acf", key_hex: str = KEY_HEX) -> None:
-        self.binary = Path(binary)
-        self.work_dir = Path(work_dir)
+        # Absolute: the sidecar starts in the repository root, so a relative
+        # path would point somewhere else for it.
+        self.binary = Path(binary).resolve()
+        self.work_dir = Path(work_dir).resolve()
         self.factory = factory
         self.name = name
         self.key_hex = key_hex
@@ -322,11 +337,7 @@ class SidecarPool:
                number: int) -> dict[str, Any]:
         dest = self.work_dir / f"sidecar-{number:02d}"
         config = prepare_sidecar_config(dest, allowlist, overrides["policy"], overrides["config"])
-        socket_path = (
-            rf"\\.\pipe\acf_{self.name}_{os.getpid()}_{number}"
-            if IS_WINDOWS
-            else str(dest / "acf.sock")
-        )
+        socket_path = sidecar_socket_path(self.name, number)
         log_path = dest / "sidecar.log"
         log = log_path.open("w", encoding="utf-8")
         process = subprocess.Popen(
@@ -365,6 +376,8 @@ class SidecarPool:
     @staticmethod
     def _stop(entry: dict[str, Any]) -> None:
         process = entry["process"]
+        if not IS_WINDOWS:
+            Path(entry["socket_path"]).unlink(missing_ok=True)
         if process.poll() is None:
             process.terminate()
             try:
