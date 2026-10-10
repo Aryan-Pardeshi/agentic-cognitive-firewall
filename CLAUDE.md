@@ -1,19 +1,22 @@
 # ACF-SDK — Project context for Claude Code
 
 ## What this project is
-A framework-agnostic security firewall SDK for LLM agents.
+A framework-agnostic security firewall for LLM agents. It checks what an agent
+takes in and the actions it takes, at every enforcement point, against Rego
+policies, and returns ALLOW / SANITISE / BLOCK.
+
 Two zones separated by a hard trust boundary (OS process boundary):
-- **PEP** (Policy Enforcement Point) — thin SDK inside the agent process
-- **PDP** (Policy Decision Point) — isolated Go sidecar, all policy evaluation here. Agent cannot reach inside it.
+- **PEP** (Policy Enforcement Point) — thin SDK inside the agent process.
+- **PDP** (Policy Decision Point) — isolated Go sidecar; all detection and policy evaluation happens here.
 
 ## Language decisions
-- Sidecar: Go 1.22+ — embeds OPA Go SDK natively, single binary, native UDS + goroutine concurrency
-- SDK v1: Python 3.10+ — zero external deps (stdlib only), LangGraph/LangChain first
-- SDK v2: TypeScript/Node 18+ — same wire protocol, deferred until v1 wire protocol is proven
-- Policies: Rego (OPA) + YAML config data
+- Sidecar: Go 1.25 (see `sidecar/go.mod`) — embeds the OPA Go SDK, single binary
+- SDK: Python 3.10+ — zero required dependencies (stdlib only); `[scanners]` extra for semantic scanning
+- SDK: TypeScript/Node 18+ — early, same wire protocol, not at parity
+- Policies: Rego (OPA) + YAML/JSON data
 
 ## IPC — wire protocol
-Unix Domain Socket at `/tmp/acf.sock`, length-prefixed binary framing.
+Unix domain socket at `/tmp/acf.sock` (Linux/macOS) or named pipe `\\.\pipe\acf` (Windows); override with `ACF_SOCKET_PATH`. Length-prefixed binary framing, one connection per request.
 
 **Request frame (54-byte header + payload):**
 | Field | Size | Value |
@@ -32,108 +35,137 @@ Unix Domain Socket at `/tmp/acf.sock`, length-prefixed binary framing.
 | Sanitised length | 4B | 0 if not SANITISE |
 | Sanitised payload | variable | Present only on SANITISE |
 
-Invalid HMAC or reused nonce → connection dropped immediately before touching JSON.
+Invalid HMAC or reused nonce → connection dropped before the JSON is parsed. Changing the frame layout is a wire version bump.
 
-## Key interfaces (v1 hook call sites in agent code)
+## Hooks
 ```python
-safe   = firewall.on_prompt(user_msg)        # user input arrives — direct injection
-result = firewall.on_context(docs)           # before RAG injection — indirect injection
-ok     = firewall.on_tool_call(name, params) # before tool executes — tool abuse
-safe   = firewall.on_memory(key, value, op)  # before memory read/write — memory poisoning
+fw.on_prompt(user_msg)            # user input — direct injection
+fw.on_context(chunks)             # retrieved docs — indirect injection
+fw.on_tool_result(tool, output)   # tool output before the agent reads it
+fw.on_tool_call(name, params)     # before a tool runs — tool abuse, tainted arguments
+fw.on_memory(key, value, op)      # memory read/write — poisoning
+fw.session(allowed_tools=..., trusted_values=..., tool_constraints=...)  # sends on_task
 ```
-Returns: `ALLOW | SANITISE | BLOCK`
-On SANITISE: also returns `sanitise_targets` — OPA declares what, sidecar executes the transformation.
-
-## v2+ hooks (register without touching existing ones)
-`on_tool_result` · `on_outbound` · `on_subagent` · `on_startup`
+The `Firewall`'s own methods are sessionless; a `Session` carries a session ID on every call.
+Planned: `on_outbound` · `on_subagent` · `on_startup`.
 
 ## Seam 1 — Hook registry (critical discipline)
-Hooks self-register into a registry map. Adding a new hook = new registry entry only.
-The pipeline dispatcher, IPC layer, and sidecar core do NOT change.
+Each hook is one entry in `sidecar/internal/hooks/builtin.go`: name, Rego package, provenance, OPA input builder, optional payload validator. Adding a hook = a registry entry + its Rego file (+ SDK method). The transport, pipeline stages and policy engine do NOT change. Never hard-code a hook name in the engine or validate stage.
 
 ## Sidecar pipeline stages (in order)
-`validate → normalise → scan → aggregate → OPA policy engine → executor`
-
-Short-circuits to BLOCK immediately if any stage produces a hard block signal.
+`validate → session → normalise → scan → aggregate → OPA policy engine → executor`, then recorders (`Pipeline.OnDecision`) update session state.
 
 | Stage | What it does |
 |---|---|
-| **Validate** | HMAC verify, nonce replay check, schema validation — drops bad frames in microseconds |
-| **Normalise** | Recursive URL/Base64/hex decode, NFKC unicode, zero-width strip, leetspeak clean → canonical text |
-| **Scan** | Aho-Corasick lexical scan, allowlist/permission lookups, integrity checks; semantic fallback for mid-band |
-| **Aggregate** | Combines signals → risk score 0.0–1.0, applies provenance trust weight, builds final RiskContext |
-| **OPA engine** | Evaluates Rego rule matching `hook_type` field → structured decision with sanitise_targets |
-| **Executor** | Performs actual string transforms declared by OPA (strip segments, redact, inject warning markers) |
+| **Validate** | Hook lookup, required fields, hook payload validator; assigns provenance per hook; sets client signals/score/state aside |
+| **Session** | Rejects malformed session IDs; loads session state into `rc.State`; validates `on_task`; computes argument taint findings |
+| **Normalise** | Recursive URL/Base64 decode, NFKC, zero-width strip, leetspeak clean → canonical text |
+| **Scan** | Aho-Corasick lexical scan, allowlist and dangerous-parameter checks |
+| **Aggregate** | Merges weighted client signals back, scores 0.0–1.0, applies provenance trust weight |
+| **OPA engine** | Evaluates the Rego package registered for the hook → decision + sanitise_targets |
+| **Executor** | Performs the transforms OPA declares (redact, split marker) |
+
+HMAC and nonce checks happen in the transport, before the pipeline. Strict mode short-circuits to BLOCK on a hard block signal.
 
 ## Seam 2 — Risk context object (critical discipline)
-Single payload flowing through the entire PDP pipeline. Schema is fixed — same in v1 and v2.
-
+Single payload through the whole pipeline. The wire schema is fixed:
 ```json
-{
-  "score":      "float 0.0–1.0",
-  "signals":    "[]named signals from scan",
-  "provenance": "string — origin of payload",
-  "session_id": "string",
-  "state":      "null in v1 · populated by TTL state store in v2"
-}
+{"score": 0.0, "signals": [], "provenance": "", "session_id": "", "hook_type": "", "payload": {}, "state": null}
 ```
-The `state` field was always in the schema. Policy engine checks `if state != null` before including historical score. Same Rego files work in both versions without modification.
+Internal-only fields (`json:"-"`): `CanonicalText`, `ClaimedProvenance`, `ClientSignals`.
 
-## State store pattern
-- Interface: `sidecar/internal/state/store.go`
-- v1: `noop.go` — Get returns nil, Set is no-op
-- v2: `ttl_store.go` — in-memory TTL map keyed by session_id, injected at startup, pipeline unchanged
+## Server-side trust (critical discipline)
+The client is not trusted for anything that sets trust:
+- **provenance** is assigned per hook by the registry; the client's claim is kept for audit only
+- **client signals** survive only for categories with a weight, scored by that weight — they may add risk, never lower it
+- **score** and **state** sent by the client are discarded; `input.state` only ever holds what the sidecar stored
+`TestClientFieldForgeryProbe` and `TestProvenanceForgeryProbe` (integration) guard this. Keep it that way.
+
+## State store and sessions
+- Interface `sidecar/internal/state/store.go` (`Get`/`Update` on `*Session`); `noop.go` (stateless), `ttl_store.go` (idle TTL, session cap, LRU eviction) — wired in `main.go`.
+- A session holds request counters, the declared `TaskScope`, and taint sets (untrusted values with sources, trusted values) with caps; overflow fails closed.
+- Policies see `input.state`: `{requests, blocked, task?, taint?}`.
+- Details: `docs/application-policy-layer.md`.
 
 ## Policy files
 ```
 policies/v1/
 ├── prompt.rego          instruction override · role escalation · thresholds
 ├── context.rego         source trust · embedded instruction · structural anomaly
-├── tool.rego            allowlist · shell metachar · path traversal · network
-├── memory.rego          HMAC stamp/verify · write scan · provenance
+├── tool.rego            allowlist · destination · detection · task scope · argument constraints · argument taint
+├── memory.rego          HMAC verify · write scan · provenance
+├── tool_result.rego     score thresholds · trusted_tools
+├── task.rego            a task scope may only narrow the global allowlist
+├── *_test.rego          one test file per policy
 └── data/
-    ├── policy_config.yaml         thresholds · allowlists · trust weights
+    ├── policy_config.yaml         thresholds · allowlists · trusted_tools · consequential_tools · sensitive_params · signal_weights
     └── jailbreak_patterns.json    versioned pattern library
 ```
-Policy logic (Rego) and policy data (YAML/JSON) are kept separate — pattern updates never touch decision rules.
-Hot-reloadable: sidecar watches for file changes, reloads without restarting.
+Policy logic (Rego) and data (YAML/JSON) stay separate. Hot-reloaded every 5s.
+
+**Signal weight contract:** every `Category: "..."` literal in non-test sidecar code needs an entry in `signal_weights` (`TestPolicyConfig_EveryEmittableSignalHasAWeight`), and so does every SDK scanner category (Python contract test). A category with no weight scores 0.0.
+
+## Testing
+```bash
+cd sidecar && go test ./...       # unit tests + Rego tests (TestRegoPolicyTests)
+cd sdk/python && python -m pytest
+cd tests/integration && go test ./... -timeout 300s   # builds and drives the real sidecar
+python -m pytest benchmarkv2 benchmarks/test_run_benchmark.py
+```
+- Changing `policies/v1/data/policy_config.yaml`, `config/sidecar.yaml`, `jailbreak_patterns.json`, `sdk/python/acf/firewall.py` or `attack_library.py` requires re-pinning `benchmarks/manifest.json` (hash of the committed LF content; baseline = last commit touching a pinned file).
+- New corpus cases in `tests/integration/adversarial_payloads.json`: take `expected` from the sidecar's actual verdict, and keep the file's existing formatting.
+
+## Windows development notes
+- The virus scanner blocks freshly built binaries in `%TEMP%`: build sidecars to a repo-local path (e.g. `benchmarkv2/overhead/.bin/`). Go unit tests run fine; the integration suite is unreliable locally — rely on CI.
+- `TestLoadResolvesRelativePolicyDirViaConfigSymlink` fails locally (needs a symlink privilege); not a regression.
+- Go's runtime clock is coarse on Windows (~0.5 ms steps); use `sidecar/internal/clock` for per-request timing.
+- Files check out with CRLF; `gofmt -l` flags them for that alone. Check formatting on LF content.
 
 ## Build phases
-| Phase | Goal | Deliverable |
+| Phase | Goal | Status |
 |---|---|---|
-| 1 | Wire protocol + crypto | Working UDS round-trip with HMAC/nonce verification |
-| 2 | Pipeline stages | All 4 stages run on a real payload (hardcoded ALLOW) |
-| 3 | OPA integration + Rego policies | Real decisions including SANITISE with targets |
-| 4 | OTel observability + integration tests | 33-payload adversarial test suite, shippable v1 |
+| 1 | Wire protocol + crypto | Done |
+| 2 | Pipeline stages | Done |
+| 3 | OPA integration + Rego policies | Done |
+| 4 | Integration test suite + OTel observability | Suite done; OTel not started (`internal/telemetry` has the timing log only) |
+| v2 | Sessions, on_tool_result, task scope, argument tainting | Done (`feat/application-policy-layer`) |
+| v2 | on_outbound, on_subagent, accumulation policies, TS parity, signed memory integrity | Planned |
 
-Work one phase at a time. Do not implement across phase boundaries.
+Work one phase at a time unless the maintainer explicitly decides otherwise.
 
-## Enforcement latency budget
-Typical 4–8ms, worst-case ~10ms. OTel spans emit async — never on the enforcement path.
+## Enforcement latency
+Measured (`benchmarkv2/overhead/`, Windows laptop, named pipes): SDK hook call ≈ 0.25–0.3 ms p50 with the semantic scanner off; sidecar internal ≈ 0.2 ms, about two-thirds OPA. Telemetry must never block the request path.
 
 ## Folder structure
 ```
 acf-sdk/
 ├── sidecar/
 │   ├── cmd/sidecar/main.go
-│   ├── internal/transport/     listener.go · frame.go · frame_test.go
-│   ├── internal/pipeline/      pipeline.go · validate.go · normalise.go · scan.go · aggregate.go
-│   ├── internal/policy/        engine.go · executor.go · sanitise.go
-│   ├── internal/crypto/        hmac.go · nonce.go
-│   ├── internal/state/         store.go · noop.go · ttl_store.go
-│   ├── internal/telemetry/     otel.go · audit.go
-│   └── pkg/riskcontext/        context.go
-├── sdk/
-│   ├── python/acf/             firewall.py · transport.py · frame.py · models.py · adapters/
-│   └── typescript/src/         firewall.ts · transport.ts · frame.ts · models.ts · adapters/
-├── policies/v1/                *.rego · data/ · tests/
-├── tests/integration/          adversarial_payloads.json · harness_test.go
-├── config/                     sidecar.yaml · sidecar.example.yaml
-└── docs/                       architecture.md · policy-authoring.md
+│   ├── internal/transport/   listener · frame · UDS/pipe connectors
+│   ├── internal/pipeline/    pipeline · validate · session · normalise · scan · aggregate
+│   ├── internal/policy/      engine · executor · sanitise
+│   ├── internal/hooks/       hook registry
+│   ├── internal/state/       store · noop · ttl_store · session · task · taint
+│   ├── internal/taint/       value extraction for argument tainting
+│   ├── internal/crypto/      hmac · nonce
+│   ├── internal/config/      config + pattern loading
+│   ├── internal/telemetry/   timing log (OTel planned)
+│   ├── internal/clock/       high-resolution clock
+│   ├── internal/benchdata/   benchmark workloads (test-only)
+│   └── pkg/riskcontext/, pkg/decision/
+├── sdk/python/acf/           firewall · session · transport · frame · models · scanners/ · adapters/
+├── sdk/typescript/src/       firewall · adapters/ (early)
+├── policies/v1/              *.rego · *_test.rego · data/      policies/tests/  adversarial Rego tests
+├── tests/integration/        harness · adversarial_payloads.json · probes · session flows
+├── benchmarks/               v1 model-free replay runner
+├── benchmarkv2/              overhead · injecagent · agentdojo · asb · common
+├── examples/ · demo/ · config/ · scripts/
+└── docs/                     architecture · application-policy-layer · pipeline · crypto · paper/
 ```
 
 ## Reference documents
 - `docs/architecture.md` — full design with diagrams
-- `docs/architecture.png` · `docs/hook-registry.png` · `docs/risk_context_object.png` — visual diagrams
-- `.archived/acf_sdk_folder_structure.txt` — canonical folder + file list
-- `.archived/acf_policy_matrix.*` — policy decision matrix
+- `docs/application-policy-layer.md` — sessions, task scope, tool output screening, argument tainting, limits
+- `docs/architecture.png` · `docs/hook-registry.png` · `docs/risk_context_object.png` — diagrams
+- `benchmarkv2/README.md` — how to run each evaluation
+- `.archived/` — earlier folder listing and policy decision matrix
