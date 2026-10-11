@@ -24,7 +24,8 @@
 #
 # `full` picks a results directory once and records it in .overnight-run, so
 # running `full` again continues that run: finished cases are kept, and cases
-# that errored are tried again. Delete .overnight-run to start a new run.
+# that errored are tried again. NEW=1 forgets the previous run and starts a new
+# one. Every run rebuilds the sidecar from the checked-out source.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +44,7 @@ else
     VENV_PY="$HERE/.venv/bin/python"
 fi
 RUN=("$VENV_PY" "$HERE/run_agentdojo.py" --mode agent --model "$MODEL" --base-url "$BASE_URL" \
-     --tool-calling "$TOOL_CALLING")
+     --tool-calling "$TOOL_CALLING" --build-sidecar)
 
 need_setup() {
     [ -x "$VENV_PY" ] || { echo "run '$0 setup' first" >&2; exit 1; }
@@ -71,6 +72,7 @@ pilot)
     ;;
 full)
     need_setup
+    [ "${NEW:-0}" = "1" ] && rm -f "$MARKER"
     if [ -f "$MARKER" ]; then
         echo "continuing $(cat "$MARKER")"
     else
