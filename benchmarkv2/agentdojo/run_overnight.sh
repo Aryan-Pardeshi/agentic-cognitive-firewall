@@ -33,7 +33,8 @@ if [ -x "$HERE/.venv/Scripts/python.exe" ]; then
 else
     VENV_PY="$HERE/.venv/bin/python"
 fi
-RUN=("$VENV_PY" "$HERE/run_agentdojo.py" --mode agent --model "$MODEL" --base-url "$BASE_URL" \n     --tool-calling "$TOOL_CALLING")
+RUN=("$VENV_PY" "$HERE/run_agentdojo.py" --mode agent --model "$MODEL" --base-url "$BASE_URL" \
+     --tool-calling "$TOOL_CALLING")
 
 need_setup() {
     [ -x "$VENV_PY" ] || { echo "run '$0 setup' first" >&2; exit 1; }
