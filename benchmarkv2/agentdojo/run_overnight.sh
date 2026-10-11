@@ -4,6 +4,7 @@
 #   benchmarkv2/agentdojo/run_overnight.sh setup    # venv, agentdojo, sidecar, preflight
 #   benchmarkv2/agentdojo/run_overnight.sh pilot    # 24 cases, about a minute
 #   benchmarkv2/agentdojo/run_overnight.sh full     # every suite; rerun to resume
+#   benchmarkv2/agentdojo/run_overnight.sh scanners # content scanners compared, no agent model
 #
 # Settings, as environment variables:
 #   MODEL     model id the server reports           (default gemma4)
@@ -12,6 +13,14 @@
 #   WORKERS   cases run at once                     (default 4)
 #   PYTHON    interpreter used to create the venv   (default python3)
 #   TOOL_CALLING  native, or prompt for a server with tool calling off (default native)
+#
+# Settings for `scanners`:
+#   BACKENDS  comma list of lexical,tfidf,minilm,gemma  (default lexical,tfidf,gemma)
+#   STRIDE    use every Nth case; 1 is all 609 per wording (default 1)
+#   DEVICE    auto, cpu or cuda                          (default auto)
+#   TORCH_INDEX_URL  wheel index to install a CUDA build of PyTorch from, if the
+#                    default one has no GPU support on this machine
+#   SKIP_INSTALL=1   do not touch the venv's packages
 #
 # `full` picks a results directory once and records it in .overnight-run, so
 # running `full` again continues that run: finished cases are kept, and cases
@@ -69,8 +78,20 @@ full)
     fi
     "${RUN[@]}" --arms "$ARMS" --workers "$WORKERS" --resume "$(cat "$MARKER")"
     ;;
+scanners)
+    need_setup
+    if [ "${SKIP_INSTALL:-0}" != "1" ]; then
+        if [ -n "${TORCH_INDEX_URL:-}" ]; then
+            "$VENV_PY" -m pip install --quiet torch torchvision --index-url "$TORCH_INDEX_URL"
+        fi
+        "$VENV_PY" -m pip install --quiet "scikit-learn>=1.3" "sentence-transformers>=2.2" pillow torchvision
+    fi
+    "$VENV_PY" -c "import torch; print('torch', torch.__version__, '| GPU available:', torch.cuda.is_available())"
+    "$VENV_PY" "$HERE/scanner_compare.py" --backends "${BACKENDS:-lexical,tfidf,gemma}" \
+        --stride "${STRIDE:-1}" --device "${DEVICE:-auto}"
+    ;;
 *)
-    sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
 esac

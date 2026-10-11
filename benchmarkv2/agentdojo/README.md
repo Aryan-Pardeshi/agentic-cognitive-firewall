@@ -173,6 +173,54 @@ To start a new run instead, delete `benchmarkv2/agentdojo/.overnight-run`.
 `records.jsonl` is not tracked by git; it is what later analysis needs, so do
 not bring back `summary.md` alone.
 
+## Comparing the content scanners
+
+`scanner_compare.py` measures what ACF's content scanners flag, with no agent
+model and no policy. For each of AgentDojo's six attack wordings it takes the
+tool result that carries the injected instruction in every replayable case
+(609 per wording), and asks each scanner about it. It asks about benign text
+too: the 97 user requests, and the tool results of the reference solutions.
+
+| Scanner | What runs |
+|---|---|
+| `lexical` | the real sidecar, through `on_tool_result` and `on_prompt`, with the semantic scanner off |
+| `tfidf` | the SDK's semantic scanner with TF-IDF |
+| `minilm` | the SDK's semantic scanner with its default sentence encoder |
+| `gemma` | the SDK's semantic scanner with EmbeddingGemma 2 (`google/embeddinggemma-2`), text encoder only |
+
+The semantic scanners are the SDK's own, with its pattern library, calibration
+and shipped threshold; only the embedding model changes. Each is scored on the
+whole text, as the SDK does, and on overlapping 48-word windows taking the
+maximum, which is an experiment and not SDK behaviour.
+
+On the machine with the GPU:
+
+```sh
+git pull
+benchmarkv2/agentdojo/run_overnight.sh setup      # only if not done on this checkout
+benchmarkv2/agentdojo/run_overnight.sh scanners
+```
+
+`scanners` installs scikit-learn, sentence-transformers, Pillow and torchvision
+into the venv, downloads the model (about 1.5 GB, not gated), rebuilds the
+sidecar, and runs lexical, TF-IDF and EmbeddingGemma 2 on all 609 cases per
+wording. Before it starts it prints whether PyTorch can see a GPU. If it says
+`GPU available: False` on a machine that has one, the default PyTorch wheel has
+no GPU support there: rerun with `TORCH_INDEX_URL` set to the PyTorch wheel
+index for the machine's CUDA version, or install PyTorch yourself and pass
+`SKIP_INSTALL=1`. On a CPU the EmbeddingGemma part takes hours; `STRIDE=4` runs
+a quarter of the cases.
+
+Results go to `results/<UTC timestamp>-scanners/`: `summary.md` has the tables
+(flagged per wording, benign text flagged, time per text), `summary.json` the
+same with 95% intervals, and `scores.jsonl` every text's score, so another
+threshold can be tried without rerunning. `scores.jsonl` is not tracked by git;
+copy the directory to bring it back. Results are written after each scanner
+finishes, so a run that stops early keeps the scanners it completed.
+
+A flag here is a scanner's signal, not ACF's decision. Outcomes are what
+`run_agentdojo.py` measures.
+
 ## Outputs
 
 `results/<UTC timestamp>-<mode>-<model>/`:

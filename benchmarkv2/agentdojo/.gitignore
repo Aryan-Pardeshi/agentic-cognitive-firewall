@@ -5,3 +5,4 @@ __pycache__/
 results/*/work/
 results/*/records.jsonl
 .overnight-run
+results/*/scores.jsonl
