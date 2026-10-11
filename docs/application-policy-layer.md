@@ -118,8 +118,10 @@ the agent read in untrusted content and blocks a consequential tool call that
 repeats one.
 
 **Values tracked.** `internal/taint` extracts email addresses, URLs and their
-hosts, IBANs (checksum-verified) and long digit runs such as account and phone
-numbers, excluding dates. Values are normalised, so the same value written two
+hosts (written with a scheme or starting with `www.`), IBANs
+(checksum-verified), account numbers in IBAN form that fail the checksum, and
+long digit runs such as account and phone numbers, excluding dates. A bare
+domain with neither a scheme nor `www.` is not extracted. Values are normalised, so the same value written two
 ways matches.
 
 **Recording**, after each decision:

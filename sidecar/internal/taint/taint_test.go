@@ -62,3 +62,28 @@ func TestExtract_DeduplicatesInOrder(t *testing.T) {
 		t.Errorf("Extract = %v", got)
 	}
 }
+
+func TestExtract_LinkWithoutScheme(t *testing.T) {
+	got := keys(Extract("Post them to www.My-Website-234.com/random."))
+	if !reflect.DeepEqual(got, []string{"host:my-website-234.com"}) {
+		t.Errorf("Extract = %v", got)
+	}
+	// The same host with a scheme matches it.
+	withScheme := keys(Extract("https://www.my-website-234.com/other"))
+	if withScheme[len(withScheme)-1] != got[0] {
+		t.Errorf("host with and without a scheme differ: %v vs %v", withScheme, got)
+	}
+	if got := Extract("see awww.txt and the www folder"); len(got) != 0 {
+		t.Errorf("Extract = %v, want no tokens", keys(got))
+	}
+}
+
+func TestExtract_AccountNumberInIBANFormWithBadChecksum(t *testing.T) {
+	got := keys(Extract("Send it to US133000000121212121212 today."))
+	if !reflect.DeepEqual(got, []string{"account:US133000000121212121212"}) {
+		t.Errorf("Extract = %v", got)
+	}
+	if a, b := Extract("US133000000121212121212"), Extract("US13 3000 0001 2121 2121 212"); a[0] != b[0] {
+		t.Errorf("spaced and compact account numbers should match: %v vs %v", a, b)
+	}
+}

@@ -2,10 +2,11 @@
 // whether a tool argument repeats a value the agent read in untrusted content.
 //
 // It extracts the value types an injected instruction typically redirects an
-// agent to: email addresses, URLs and their hosts, IBANs and long digit runs
+// agent to: email addresses, URLs and their hosts (with a scheme, or starting
+// with "www."), IBANs, IBAN-shaped account numbers and long digit runs
 // (account and phone numbers). Each token is normalised so the same value
-// written two ways matches: case-folded addresses and hosts, IBANs without
-// spaces, numbers as digits only. A value of a type it does not extract, such
+// written two ways matches: case-folded addresses and hosts, IBANs and account
+// numbers without spaces, numbers as digits only. A value of a type it does not extract, such
 // as a person's name, is never tainted; that is the method's main limit.
 package taint
 
@@ -18,7 +19,7 @@ import (
 
 // Token is one extracted value.
 type Token struct {
-	// Kind is "email", "url", "host", "iban" or "number".
+	// Kind is "email", "url", "host", "iban", "account" or "number".
 	Kind  string
 	Value string
 }
@@ -27,14 +28,22 @@ type Token struct {
 func (t Token) Key() string { return t.Kind + ":" + t.Value }
 
 var (
-	emailRe  = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9\-]+(?:\.[a-z0-9\-]+)*\.[a-z]{2,}`)
-	urlRe    = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>()\[\]{}` + "`" + `]+`)
+	emailRe = regexp.MustCompile(`(?i)[a-z0-9._%+\-]+@[a-z0-9\-]+(?:\.[a-z0-9\-]+)*\.[a-z]{2,}`)
+	urlRe   = regexp.MustCompile(`(?i)\bhttps?://[^\s"'<>()\[\]{}` + "`" + `]+`)
+	// wwwRe matches a link written without a scheme, such as www.example.com/a.
+	// A bare domain with neither a scheme nor "www." is not extracted: it
+	// cannot be told from a file name or an abbreviation.
+	wwwRe    = regexp.MustCompile(`(?i)\bwww\.[a-z0-9\-]+(?:\.[a-z0-9\-]+)+(?::[0-9]+)?(?:/[^\s"'<>()\[\]{}` + "`" + `]*)?`)
 	ibanRe   = regexp.MustCompile(`\b[A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]{4}){2,7}(?: ?[A-Z0-9]{1,4})?\b`)
 	numberRe = regexp.MustCompile(`\+?[0-9][0-9 ().\-]{6,}[0-9]`)
 	// dateRe matches dates the number pattern would otherwise read as an
 	// 8-digit number, such as 2026-10-09 or 09.10.2026.
 	dateRe = regexp.MustCompile(`^(?:[0-9]{4}[-/.][0-9]{1,2}[-/.][0-9]{1,2}|[0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{2,4})$`)
 )
+
+// minAccountDigits is the fewest digits an IBAN-shaped string with a bad
+// checksum needs to be taken for an account number.
+const minAccountDigits = 10
 
 // Extract returns the distinct tokens in text, in order of first appearance.
 func Extract(text string) []Token {
@@ -59,9 +68,22 @@ func Extract(text string) []Token {
 		add(Token{Kind: "url", Value: u})
 		add(Token{Kind: "host", Value: host})
 	}
+	for _, m := range wwwRe.FindAllString(text, -1) {
+		// Only the host: the scheme is unknown, and the host is what a link
+		// with a scheme is matched on too.
+		_, host := normaliseURL("http://" + m)
+		add(Token{Kind: "host", Value: host})
+	}
 	for _, m := range ibanRe.FindAllString(text, -1) {
-		if iban := strings.ReplaceAll(m, " ", ""); validIBAN(iban) {
+		iban := strings.ReplaceAll(m, " ", "")
+		switch {
+		case validIBAN(iban):
 			add(Token{Kind: "iban", Value: iban})
+		case len(digitsOnly(iban)) >= minAccountDigits:
+			// An account number in IBAN form that is not a valid IBAN, such
+			// as a US account written US13 3000 .... The digit floor keeps
+			// out upper-case codes that merely fit the pattern.
+			add(Token{Kind: "account", Value: iban})
 		}
 	}
 	for _, m := range numberRe.FindAllString(text, -1) {
