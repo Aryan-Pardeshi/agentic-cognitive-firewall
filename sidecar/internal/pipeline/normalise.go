@@ -4,7 +4,8 @@
 //  2. Recursive Base64 decoding
 //  3. Unicode NFKC normalisation
 //  4. Zero-width character stripping
-//  5. Leetspeak cleaning
+//  5. Whitespace collapsing
+//  6. Leetspeak cleaning
 //
 // The result is written to rc.CanonicalText. The original rc.Payload is never
 // mutated. Normalise never emits a hard block signal — it is a pure transform.
@@ -94,6 +95,7 @@ func normalise(text string) string {
 	text = decodeBase64(text)
 	text = applyNFKC(text)
 	text = stripZeroWidth(text)
+	text = collapseWhitespace(text)
 	text = cleanLeetspeak(text)
 	return text
 }
@@ -261,12 +263,35 @@ func stripZeroWidth(text string) string {
 	}, text)
 }
 
+// collapseWhitespace replaces every run of whitespace with one space. Patterns
+// are phrases with single spaces, so without this a phrase split by a line
+// break, a tab or extra spaces does not match: tool output formatted as YAML
+// or JSON wraps long lines, and an attacker can add a newline on purpose.
+func collapseWhitespace(text string) string {
+	var b strings.Builder
+	b.Grow(len(text))
+	inSpace := false
+	for _, r := range text {
+		if unicode.IsSpace(r) {
+			if !inSpace {
+				b.WriteByte(' ')
+				inSpace = true
+			}
+			continue
+		}
+		inSpace = false
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // normalisePattern applies only the character-level transforms that also run
 // on payloads, so the AC dictionary and CanonicalText use the same alphabet.
 // URL and base64 decoding are skipped because those are payload-specific.
 func normalisePattern(p string) string {
 	p = applyNFKC(p)
 	p = stripZeroWidth(p)
+	p = collapseWhitespace(p)
 	p = cleanLeetspeak(p)
 	return p
 }

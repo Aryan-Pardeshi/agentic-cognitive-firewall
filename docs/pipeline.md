@@ -147,7 +147,15 @@ Strips seven invisible code points attackers insert between letters to break key
 i​g​n​o​r​e (invisible chars between letters) → ignore
 ```
 
-#### 5. Leetspeak substitution
+#### 5. Whitespace collapsing
+
+Replaces every run of whitespace (spaces, tabs, line breaks, non-breaking and other Unicode spaces) with one space. Patterns are phrases with single spaces, so a phrase split by a line break would otherwise not match. Tool output formatted as YAML or JSON wraps long lines this way, and an attacker can add a newline on purpose.
+
+```
+ignore all previous\n    instructions → ignore all previous instructions
+```
+
+#### 6. Leetspeak substitution
 
 Nine digit/symbol-to-letter substitutions:
 

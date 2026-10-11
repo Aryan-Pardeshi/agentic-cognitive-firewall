@@ -59,7 +59,7 @@ Each hook is one entry in `sidecar/internal/hooks/builtin.go`: name, Rego packag
 |---|---|
 | **Validate** | Hook lookup, required fields, hook payload validator; assigns provenance per hook; sets client signals/score/state aside |
 | **Session** | Rejects malformed session IDs; loads session state into `rc.State`; validates `on_task`; computes argument taint findings |
-| **Normalise** | Recursive URL/Base64 decode, NFKC, zero-width strip, leetspeak clean → canonical text |
+| **Normalise** | Recursive URL/Base64 decode, NFKC, zero-width strip, whitespace collapse, leetspeak clean → canonical text |
 | **Scan** | Aho-Corasick lexical scan, allowlist and dangerous-parameter checks |
 | **Aggregate** | Merges weighted client signals back, scores 0.0–1.0, applies provenance trust weight |
 | **OPA engine** | Evaluates the Rego package registered for the hook → decision + sanitise_targets |
