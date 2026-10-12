@@ -17,6 +17,7 @@ manifest.json is what keeps that safe.
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -399,18 +400,25 @@ class PromptToolLLM(BasePipelineElement):
 
 
 def make_llm(model: str, base_url: str | None, tool_calling: str = "native",
-             tool_role: str = "user") -> BasePipelineElement:
+             tool_role: str = "user", thinking: bool = True) -> BasePipelineElement:
     """The agent model, through an OpenAI-compatible endpoint at temperature 0.
 
     native uses the server's own tool calling, as upstream does for OpenAI
     models. prompt describes the tools in the system prompt and parses calls
-    from the answer, as upstream does for local models.
+    from the answer, as upstream does for local models. thinking=False sends
+    enable_thinking: false to the chat template with every request, which a
+    vLLM server passes on to templates that have the switch (Qwen3).
     """
     import openai  # noqa: PLC0415
     from agentdojo.agent_pipeline.llms.openai_llm import OpenAILLM  # noqa: PLC0415
 
     api_key = os.environ.get("OPENAI_API_KEY") or ("local" if base_url else None)
     client = openai.OpenAI(base_url=base_url, api_key=api_key)
+    if not thinking:
+        client.chat.completions.create = functools.partial(  # type: ignore[method-assign]
+            client.chat.completions.create,
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        )
     if tool_calling == "prompt":
         return PromptToolLLM(client, model, tool_role)
     return OpenAILLM(client, model)

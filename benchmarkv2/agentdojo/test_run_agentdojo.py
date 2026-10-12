@@ -352,3 +352,10 @@ def test_records_survive_an_interrupted_line(tmp_path):
     assert len(records) == 1
     assert run_agentdojo.case_key(records[0]) == ("banking", "user_task_0", None, "none")
     assert run_agentdojo.read_records(tmp_path / "missing.jsonl") == []
+
+
+def test_stopped_by_on_an_errored_attacked_case():
+    # An errored case carries calls=None, not a missing key.
+    errored = {"injection_task": "injection_task_0", "attack_succeeded": None, "calls": None,
+               "error": "BadRequestError: context length"}
+    assert run_agentdojo.stopped_by(errored) is None

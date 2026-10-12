@@ -265,3 +265,50 @@ def test_prompt_tool_llm_raises_when_the_model_returns_nothing():
     llm = adapter.PromptToolLLM(FakeChatClient(None), "m", tool_role="user")
     with pytest.raises(RuntimeError):
         adapter.agent_case(plan, case(None), acf_guard.Guard(None, ARMS["none"], ()), llm)
+
+
+def _serve_one_chat_completion(seen: list[dict]):
+    """A local OpenAI-compatible endpoint that records each request body."""
+    import http.server
+    import json
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802
+            seen.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            body = json.dumps({
+                "id": "x", "object": "chat.completion", "created": 0, "model": "m",
+                "choices": [{"index": 0, "finish_reason": "stop",
+                             "message": {"role": "assistant", "content": "done"}}],
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+@pytest.mark.parametrize("tool_calling", ["native", "prompt"])
+def test_make_llm_can_ask_the_server_to_turn_thinking_off(tool_calling):
+    from agentdojo.functions_runtime import EmptyEnv, FunctionsRuntime
+    from agentdojo.types import ChatUserMessage
+
+    seen: list[dict] = []
+    server = _serve_one_chat_completion(seen)
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/v1"
+        user = ChatUserMessage(role="user", content=[text_content_block_from_string("hi")])
+        for thinking in (True, False):
+            llm = adapter.make_llm("m", url, tool_calling, thinking=thinking)
+            llm.query("hi", FunctionsRuntime([]), EmptyEnv(), [user], {})
+    finally:
+        server.shutdown()
+    assert "chat_template_kwargs" not in seen[0]
+    assert seen[1]["chat_template_kwargs"] == {"enable_thinking": False}

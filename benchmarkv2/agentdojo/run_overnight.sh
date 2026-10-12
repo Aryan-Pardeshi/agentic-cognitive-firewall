@@ -13,6 +13,7 @@
 #   WORKERS   cases run at once                     (default 4)
 #   PYTHON    interpreter used to create the venv   (default python3)
 #   TOOL_CALLING  native, or prompt for a server with tool calling off (default native)
+#   THINKING=off  turn the model's thinking off, for models with the switch (Qwen3)
 #
 # Settings for `scanners`:
 #   BACKENDS  comma list of lexical,tfidf,minilm,gemma  (default lexical,tfidf,gemma)
@@ -45,6 +46,7 @@ else
 fi
 RUN=("$VENV_PY" "$HERE/run_agentdojo.py" --mode agent --model "$MODEL" --base-url "$BASE_URL" \
      --tool-calling "$TOOL_CALLING" --build-sidecar)
+[ "${THINKING:-}" = "off" ] && RUN+=(--no-thinking)
 
 need_setup() {
     [ -x "$VENV_PY" ] || { echo "run '$0 setup' first" >&2; exit 1; }

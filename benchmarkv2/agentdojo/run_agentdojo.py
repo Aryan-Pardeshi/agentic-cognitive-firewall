@@ -150,7 +150,8 @@ def stopped_by(record: dict[str, Any]) -> str | None:
         return None
     if record.get("injection_hidden") and not record.get("injection_seen"):
         return "detect"
-    if any(c["legitimate"] is False and c["call"] == "BLOCK" for c in record.get("calls", [])):
+    # A case that errored has no calls: its record carries None.
+    if any(c["legitimate"] is False and c["call"] == "BLOCK" for c in record.get("calls") or []):
         return "gate"
     return None
 
@@ -252,7 +253,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"Mode `{prov.get('mode')}`, agent model `{prov['model']}`, attack `{prov['attack']}`, "
         f"agentdojo `{prov['agentdojo_version']}` (suites {prov.get('benchmark_version')}), "
         f"semantic scanner `{prov['semantic_scanner']}`, shell-metacharacter check on tool "
-        f"arguments `{'shipped' if prov.get('shipped_param_scan') else 'skipped'}`.",
+        f"arguments `{'shipped' if prov.get('shipped_param_scan') else 'skipped'}`"
+        + (f", model thinking `{prov['thinking']}`" if prov.get("thinking") else "") + ".",
         f"ACF commit `{prov['acf_commit']}`.",
         "",
         "Rates are measured after enforcement: a tool call ACF blocks never runs and is not "
@@ -380,6 +382,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                              "system prompt, for servers without a tool-call parser (agent mode)")
     parser.add_argument("--tool-role", default="user",
                         help="chat role tool results are sent under with --tool-calling prompt")
+    parser.add_argument("--no-thinking", action="store_true",
+                        help="ask the server to turn the model's thinking off, for models whose chat "
+                             "template has an enable_thinking switch, such as Qwen3 (agent mode)")
     parser.add_argument("--user-tasks", default=None, help="comma list of user task IDs")
     parser.add_argument("--injection-tasks", default=None, help="comma list of injection task IDs")
     parser.add_argument("--limit", type=int, default=None, help="user tasks per suite")
@@ -444,7 +449,8 @@ def main(argv: list[str] | None = None) -> int:
         user_tasks=_csv(args.user_tasks), injection_tasks=_csv(args.injection_tasks),
         limit=args.limit, benign=not args.no_benign,
     )
-    llm = adapter.make_llm(args.model, args.base_url, args.tool_calling, args.tool_role) if args.mode == "agent" else None
+    llm = adapter.make_llm(args.model, args.base_url, args.tool_calling, args.tool_role,
+                           thinking=not args.no_thinking) if args.mode == "agent" else None
 
     records_path = out_dir / "records.jsonl"
     done = {case_key(r) for r in read_records(records_path) if not r.get("error")}
@@ -500,7 +506,14 @@ def main(argv: list[str] | None = None) -> int:
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool_exec:
             futures = [pool_exec.submit(run_one, case, arm_name) for case, arm_name in cases]
             for future in concurrent.futures.as_completed(futures):
-                writer.write(future.result())
+                try:
+                    record = future.result()
+                except Exception:
+                    # A bug in handling one case must not lose the cases still
+                    # running: stop taking new ones and fail now.
+                    pool_exec.shutdown(wait=False, cancel_futures=True)
+                    raise
+                writer.write(record)
                 finished += 1
                 if finished % 50 == 0 or finished == len(cases):
                     rate_s = finished / max(time.monotonic() - started, 1e-9)
@@ -520,6 +533,7 @@ def main(argv: list[str] | None = None) -> int:
                     "base_url": args.base_url if args.mode == "agent" else None,
                     "tool_calling": args.tool_calling if args.mode == "agent" else None,
                     "tool_role": args.tool_role if args.tool_calling == "prompt" else None,
+                    "thinking": ("off" if args.no_thinking else "model default") if args.mode == "agent" else None,
                     "arms": args.arms,
                     "suites": plan.suites,
                     "user_tasks": args.user_tasks,
