@@ -76,7 +76,7 @@ full)
     if [ -f "$MARKER" ]; then
         echo "continuing $(cat "$MARKER")"
     else
-        echo "$HERE/results/$(date -u +%Y%m%dT%H%M%SZ)-agent-$MODEL" > "$MARKER"
+        echo "$HERE/results/$(date -u +%Y%m%dT%H%M%SZ)-agent-${MODEL//\//-}" > "$MARKER"
     fi
     "${RUN[@]}" --arms "$ARMS" --workers "$WORKERS" --resume "$(cat "$MARKER")"
     ;;
