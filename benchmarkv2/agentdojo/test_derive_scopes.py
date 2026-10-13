@@ -67,7 +67,9 @@ def test_load_scope_file_narrows_and_falls_back_to_the_suite(tmp_path):
 
 
 def test_derive_scopes_end_to_end_against_a_local_endpoint(tmp_path):
-    pytest.importorskip("agentdojo")
+    # The repository has a directory named agentdojo, so test for a real submodule.
+    pytest.importorskip("agentdojo.agent_pipeline")
+    pytest.importorskip("openai")
     seen: list[dict] = []
 
     class Handler(http.server.BaseHTTPRequestHandler):
