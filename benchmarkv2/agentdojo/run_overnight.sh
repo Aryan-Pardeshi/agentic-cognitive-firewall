@@ -5,6 +5,7 @@
 #   benchmarkv2/agentdojo/run_overnight.sh pilot    # 24 cases, about a minute
 #   benchmarkv2/agentdojo/run_overnight.sh full     # every suite; rerun to resume
 #   benchmarkv2/agentdojo/run_overnight.sh scanners # content scanners compared, no agent model
+#   benchmarkv2/agentdojo/run_overnight.sh derive-scope # task scopes from the user requests, 97 model calls
 #
 # Settings, as environment variables:
 #   MODEL     model id the server reports           (default gemma4)
@@ -14,6 +15,7 @@
 #   PYTHON    interpreter used to create the venv   (default python3)
 #   TOOL_CALLING  native, or prompt for a server with tool calling off (default native)
 #   THINKING=off  turn the model's thinking off, for models with the switch (Qwen3)
+#   SCOPE_FILE    task scopes from `derive-scope`, used in place of the reference solutions
 #
 # Settings for `scanners`:
 #   BACKENDS  comma list of lexical,tfidf,minilm,gemma  (default lexical,tfidf,gemma)
@@ -47,6 +49,7 @@ fi
 RUN=("$VENV_PY" "$HERE/run_agentdojo.py" --mode agent --model "$MODEL" --base-url "$BASE_URL" \
      --tool-calling "$TOOL_CALLING" --build-sidecar)
 [ "${THINKING:-}" = "off" ] && RUN+=(--no-thinking)
+[ -n "${SCOPE_FILE:-}" ] && RUN+=(--scope-file "$SCOPE_FILE")
 
 need_setup() {
     [ -x "$VENV_PY" ] || { echo "run '$0 setup' first" >&2; exit 1; }
@@ -81,6 +84,12 @@ full)
         echo "$HERE/results/$(date -u +%Y%m%dT%H%M%SZ)-agent-${MODEL//\//-}" > "$MARKER"
     fi
     "${RUN[@]}" --arms "$ARMS" --workers "$WORKERS" --resume "$(cat "$MARKER")"
+    ;;
+derive-scope)
+    need_setup
+    DERIVE=("$VENV_PY" "$HERE/derive_scopes.py" --model "$MODEL" --base-url "$BASE_URL" --workers "$WORKERS")
+    [ "${THINKING:-}" = "off" ] && DERIVE+=(--no-thinking)
+    "${DERIVE[@]}"
     ;;
 scanners)
     need_setup

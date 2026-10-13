@@ -255,6 +255,7 @@ def render_markdown(summary: dict[str, Any]) -> str:
         f"semantic scanner `{prov['semantic_scanner']}`, shell-metacharacter check on tool "
         f"arguments `{'shipped' if prov.get('shipped_param_scan') else 'skipped'}`"
         + (f", model thinking `{prov['thinking']}`" if prov.get("thinking") else "") + ".",
+        f"Task scope: {prov.get('task_scope_source', 'reference solution')}.",
         f"ACF commit `{prov['acf_commit']}`.",
         "",
         "Rates are measured after enforcement: a tool call ACF blocks never runs and is not "
@@ -368,6 +369,25 @@ def allowlist_for(arm: harness.Arm, suite_tools: tuple[str, ...],
     return ()
 
 
+def load_scope_file(path: Path, suite_tools: dict[str, tuple[str, ...]],
+                    tasks: list[tuple[str, str]]) -> dict[tuple[str, str], tuple[str, ...]]:
+    """Task scopes from a derive_scopes.py file, for the tasks of this run.
+
+    A task the file marks null has no scope: it runs with every tool of its
+    suite. A task missing from the file is an error, so a run never falls back
+    to the reference solution without saying so.
+    """
+    scopes = json.loads(path.read_text(encoding="utf-8"))["scopes"]
+    out: dict[tuple[str, str], tuple[str, ...]] = {}
+    for suite, task in tasks:
+        if task not in scopes.get(suite, {}):
+            raise SystemExit(f"{path} has no scope for {suite}/{task}")
+        scope = scopes[suite][task]
+        known = set(suite_tools[suite])
+        out[(suite, task)] = tuple(sorted(known if scope is None else known & set(scope)))
+    return out
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--mode", choices=MODES, default="replay")
@@ -382,6 +402,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                              "system prompt, for servers without a tool-call parser (agent mode)")
     parser.add_argument("--tool-role", default="user",
                         help="chat role tool results are sent under with --tool-calling prompt")
+    parser.add_argument("--scope-file", type=Path, default=None,
+                        help="task scopes from derive_scopes.py, used by the task-scope arms in "
+                             "place of the tools of each task's reference solution")
     parser.add_argument("--no-thinking", action="store_true",
                         help="ask the server to turn the model's thinking off, for models whose chat "
                              "template has an enable_thinking switch, such as Qwen3 (agent mode)")
@@ -449,6 +472,8 @@ def main(argv: list[str] | None = None) -> int:
         user_tasks=_csv(args.user_tasks), injection_tasks=_csv(args.injection_tasks),
         limit=args.limit, benign=not args.no_benign,
     )
+    if args.scope_file is not None:
+        plan.task_tools = load_scope_file(args.scope_file, plan.suite_tools, sorted(plan.task_tools))
     llm = adapter.make_llm(args.model, args.base_url, args.tool_calling, args.tool_role,
                            thinking=not args.no_thinking) if args.mode == "agent" else None
 
@@ -534,6 +559,9 @@ def main(argv: list[str] | None = None) -> int:
                     "tool_calling": args.tool_calling if args.mode == "agent" else None,
                     "tool_role": args.tool_role if args.tool_calling == "prompt" else None,
                     "thinking": ("off" if args.no_thinking else "model default") if args.mode == "agent" else None,
+                    "task_scope_source": "reference solution" if args.scope_file is None
+                    else f"derived from the user request ({args.scope_file.name})",
+                    "scope_file_sha256": harness.sha256_file(args.scope_file) if args.scope_file else None,
                     "arms": args.arms,
                     "suites": plan.suites,
                     "user_tasks": args.user_tasks,

@@ -221,6 +221,33 @@ finishes, so a run that stops early keeps the scanners it completed.
 A flag here is a scanner's signal, not ACF's decision. Outcomes are what
 `run_agentdojo.py` measures.
 
+## Task scope without the reference solution
+
+The task-scope arms (`gate-task`, `full-task`, `full-task-taint`) take a task's
+tools from its reference solution. That is the tightest scope possible and a
+deployment does not have it. `derive_scopes.py` produces the scope a deployment
+could: before the agent runs, the model is shown the user's request and the
+application's tools, and names the tools the request needs. It sees no tool
+output, so nothing an attacker controls can influence the scope.
+
+```sh
+MODEL=gemma4 benchmarkv2/agentdojo/run_overnight.sh derive-scope     # 97 model calls
+NEW=1 MODEL=gemma4 SCOPE_FILE=benchmarkv2/agentdojo/results/scopes-gemma4.json     ARMS=gate-task,full-task-taint benchmarkv2/agentdojo/run_overnight.sh full
+```
+
+The scope file also works with the model-free replay
+(`run_agentdojo.py --mode replay --arms gate-task,full-task-taint --scope-file ...`),
+which gives the worst-case agent under the derived scopes in a few minutes.
+
+- The file records, against the reference solutions, how many tasks miss a
+  tool they need (a utility cost) and how many carry extra tools (a security
+  cost).
+- A request whose answer cannot be read gets no scope and runs with every tool
+  of the application; the file counts these.
+- `summary.md` states which scope source a run used. Report runs with the
+  reference solution as the upper bound, and runs with a derived scope as what
+  a deployment gets.
+
 ## Outputs
 
 `results/<UTC timestamp>-<mode>-<model>/`:
