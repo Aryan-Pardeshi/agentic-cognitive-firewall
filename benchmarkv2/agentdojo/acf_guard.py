@@ -44,14 +44,20 @@ class Guard:
     Every ACF arm runs in a session. A task-scoped arm declares the task's
     tools as the session's scope through the SDK (on_task), so the sidecar
     enforces least privilege itself rather than the harness imitating it.
-    The `none` arm makes no ACF calls at all.
+    The `none` arm makes no ACF calls at all. An arm with `confirm` also
+    declares confirmed_values as trusted, which the SDK only accepts together
+    with a task scope.
     """
 
-    def __init__(self, firewall: Any, arm: harness.Arm, task_tools: tuple[str, ...]) -> None:
+    def __init__(self, firewall: Any, arm: harness.Arm, task_tools: tuple[str, ...],
+                 confirmed_values: tuple[str, ...] = ()) -> None:
         self.arm = arm
         self.session = None
         if firewall is not None and arm.name != "none":
-            if arm.gate == "task":
+            if arm.gate == "task" and arm.confirm:
+                self.session = firewall.session(allowed_tools=sorted(set(task_tools)),
+                                                trusted_values=sorted(set(confirmed_values)))
+            elif arm.gate == "task":
                 self.session = firewall.session(allowed_tools=sorted(set(task_tools)))
             else:
                 self.session = firewall.session()

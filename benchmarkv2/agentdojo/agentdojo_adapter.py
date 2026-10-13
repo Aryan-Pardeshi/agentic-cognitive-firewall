@@ -69,6 +69,8 @@ class Plan:
     suite_tools: dict[str, tuple[str, ...]]
     suite_tool_params: dict[str, dict[str, list[str]]]
     task_tools: dict[tuple[str, str], tuple[str, ...]]
+    # Each user task's reference calls, as (tool, arguments).
+    task_calls: dict[tuple[str, str], tuple[tuple[str, dict[str, Any]], ...]] = field(default_factory=dict)
     cases: list[Case] = field(default_factory=list)
     skipped_injection_tasks: dict[str, list[str]] = field(default_factory=dict)
 
@@ -147,8 +149,10 @@ def build_plan(benchmark_version: str, suite_names: list[str] | None, *, attack_
         for user_id in user_ids:
             task = suite.user_tasks[user_id]
             task_env = task.init_environment(default_env.model_copy(deep=True))
-            plan.task_tools[(name, user_id)] = tuple(
-                sorted({call.function for call in task.ground_truth(task_env)})
+            reference = task.ground_truth(task_env)
+            plan.task_tools[(name, user_id)] = tuple(sorted({call.function for call in reference}))
+            plan.task_calls[(name, user_id)] = tuple(
+                (call.function, _plain(call.args)) for call in reference
             )
             if benign:
                 plan.cases.append(Case(name, user_id, None))

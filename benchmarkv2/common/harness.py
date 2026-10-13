@@ -72,12 +72,15 @@ class Arm:
     taint:  block consequential tool calls whose arguments repeat a value the
             agent read in untrusted content. Needs sessions, so only runners
             that use them offer arms with it.
+    confirm: declare as trusted the destinations the task legitimately uses,
+            as a user who confirms each one correctly would. Only with taint.
     """
 
     name: str
     detect: bool
     gate: str | None
     taint: bool = False
+    confirm: bool = False
 
 
 # Keep `none` first: arms whose agent prompts are identical can share cached

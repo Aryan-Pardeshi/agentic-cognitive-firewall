@@ -78,7 +78,9 @@ def sanitised(text: str) -> SimpleNamespace:
 def test_arms_add_tainting_to_the_shared_set():
     assert list(ARMS)[: len(harness.ARMS)] == list(harness.ARMS)
     taint_arms = [name for name, arm in ARMS.items() if arm.taint]
-    assert taint_arms == ["full-global-taint", "full-task-taint"]
+    assert taint_arms == ["full-global-taint", "full-task-taint", "full-task-taint-confirm"]
+    # Confirmed values are declared with a task scope, so only a task arm has them.
+    assert [name for name, arm in ARMS.items() if arm.confirm] == ["full-task-taint-confirm"]
     # Tainting needs tool output and tool calls to both go through ACF.
     assert all(ARMS[name].detect and ARMS[name].gate for name in taint_arms)
 
@@ -359,3 +361,23 @@ def test_stopped_by_on_an_errored_attacked_case():
     errored = {"injection_task": "injection_task_0", "attack_succeeded": None, "calls": None,
                "error": "BadRequestError: context length"}
     assert run_agentdojo.stopped_by(errored) is None
+
+
+def test_confirmed_values_are_the_sensitive_arguments_of_consequential_calls():
+    policy = {"consequential_tools": ["send_money", "send_email"],
+              "sensitive_params": {"send_money": ["recipient"], "send_email": ["recipients", "cc"]}}
+    calls = (
+        ("read_file", {"file_path": "bill.txt"}),
+        ("send_money", {"recipient": "UK12345678901234567890", "amount": 98.7}),
+        ("send_email", {"recipients": ["a@x.io", "b@x.io"], "cc": None, "body": "c@x.io"}),
+    )
+    assert run_agentdojo.confirmed_values(calls, policy) == ("UK12345678901234567890", "a@x.io", "b@x.io")
+    assert run_agentdojo.confirmed_values(calls, {}) == ()
+
+
+def test_confirm_arm_declares_the_confirmed_values_with_the_scope():
+    firewall = FakeFirewall()
+    acf_guard.Guard(firewall, ARMS["full-task-taint-confirm"], ("send_money",), ("b", "a", "b"))
+    acf_guard.Guard(firewall, ARMS["full-task-taint"], ("send_money",), ("a",))
+    assert firewall.sessions[0].scope == {"allowed_tools": ["send_money"], "trusted_values": ["a", "b"]}
+    assert firewall.sessions[1].scope == {"allowed_tools": ["send_money"]}

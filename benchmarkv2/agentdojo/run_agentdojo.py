@@ -64,6 +64,10 @@ ARMS = {
     **harness.ARMS,
     "full-global-taint": harness.Arm("full-global-taint", detect=True, gate="global", taint=True),
     "full-task-taint": harness.Arm("full-task-taint", detect=True, gate="task", taint=True),
+    # As full-task-taint, with a user who confirms each destination the task
+    # legitimately uses: an upper bound on the utility tainting can give back.
+    "full-task-taint-confirm": harness.Arm("full-task-taint-confirm", detect=True, gate="task",
+                                           taint=True, confirm=True),
 }
 DEFAULT_ARMS = {
     "replay": ",".join(ARMS),
@@ -168,6 +172,26 @@ def run_with_retries(run: Callable[[], dict[str, Any]], attempts: int = CASE_ATT
                 return {"error": f"sidecar transport: {exc!r}", "attempts": attempt}
             time.sleep(0.2 * attempt)
     raise AssertionError("unreachable")
+
+
+def confirmed_values(calls: tuple[tuple[str, dict[str, Any]], ...],
+                     domain_policy: dict[str, Any]) -> tuple[str, ...]:
+    """The destinations a task's reference solution passes to consequential tools.
+
+    These stand for what a user would confirm if ACF asked before acting on a
+    value the agent read: the values of the suite's sensitive parameters in the
+    reference calls. An attacker's destination is never among them.
+    """
+    sensitive = domain_policy.get("sensitive_params", {})
+    values: set[str] = set()
+    for tool, args in calls:
+        if tool not in domain_policy.get("consequential_tools", []):
+            continue
+        for param in sensitive.get(tool, []):
+            value = args.get(param)
+            items = value if isinstance(value, (list, tuple)) else [value]
+            values.update(str(item) for item in items if item not in (None, ""))
+    return tuple(sorted(values))
 
 
 def config_overrides(tool_params: dict[str, list[str]], shipped_param_scan: bool) -> dict[str, Any]:
@@ -508,7 +532,10 @@ def main(argv: list[str] | None = None) -> int:
 
             def attempt() -> dict[str, Any]:
                 firewall = factory.get(socket_path) if socket_path else None
-                guard = Guard(firewall, arm, plan.task_tools[(case.suite, case.user_task)])
+                key = (case.suite, case.user_task)
+                confirmed = confirmed_values(plan.task_calls[key], domain_policies[case.suite]) \
+                    if arm.confirm else ()
+                guard = Guard(firewall, arm, plan.task_tools[key], confirmed)
                 if args.mode == "replay":
                     outcome = adapter.replay_case(plan, case, guard)
                 else:
