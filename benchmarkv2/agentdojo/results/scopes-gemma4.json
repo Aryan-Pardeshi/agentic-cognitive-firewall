@@ -1,0 +1,585 @@
+{
+ "about": "Task scopes derived from the user's request alone, before the agent runs. null means the model's answer could not be read: no scope, every tool allowed.",
+ "model": "gemma4",
+ "benchmark_version": "v1.2.2",
+ "thinking": "model default",
+ "prompt_sha256": "3d36f9358e8b3d92cecd114b129fb2034e28ccc35a6f026a2208ca937adf6f47",
+ "elapsed_s": 49.7,
+ "against_reference_solutions": {
+  "tasks": 97,
+  "unreadable_answers": 2,
+  "tasks_missing_a_reference_tool": 21,
+  "tasks_with_extra_tools": 25,
+  "mean_scope_size": 3.2,
+  "mean_reference_size": 2.89
+ },
+ "scopes": {
+  "workspace": {
+   "user_task_0": [
+    "search_calendar_events"
+   ],
+   "user_task_1": [
+    "get_day_calendar_events"
+   ],
+   "user_task_10": [
+    "get_current_day",
+    "get_day_calendar_events"
+   ],
+   "user_task_11": [
+    "get_day_calendar_events"
+   ],
+   "user_task_12": [
+    "create_calendar_event",
+    "get_day_calendar_events"
+   ],
+   "user_task_13": [
+    "search_emails"
+   ],
+   "user_task_14": [
+    "search_emails"
+   ],
+   "user_task_15": [
+    "create_calendar_event",
+    "search_emails"
+   ],
+   "user_task_16": [
+    "search_emails"
+   ],
+   "user_task_17": [
+    "get_current_day",
+    "search_emails"
+   ],
+   "user_task_18": [
+    "add_calendar_event_participants",
+    "create_calendar_event",
+    "search_contacts_by_name",
+    "search_emails"
+   ],
+   "user_task_19": [
+    "get_day_calendar_events",
+    "search_emails"
+   ],
+   "user_task_2": [
+    "get_current_day",
+    "search_calendar_events"
+   ],
+   "user_task_20": [
+    "create_calendar_event",
+    "get_day_calendar_events",
+    "search_contacts_by_name"
+   ],
+   "user_task_21": [
+    "create_calendar_event",
+    "get_day_calendar_events",
+    "search_calendar_events"
+   ],
+   "user_task_22": [
+    "search_emails"
+   ],
+   "user_task_23": [
+    "get_day_calendar_events",
+    "search_emails"
+   ],
+   "user_task_24": [
+    "get_unread_emails"
+   ],
+   "user_task_25": null,
+   "user_task_26": [
+    "list_files"
+   ],
+   "user_task_27": [],
+   "user_task_28": [
+    "search_files_by_filename"
+   ],
+   "user_task_29": [
+    "append_to_file",
+    "get_file_by_id",
+    "search_files_by_filename"
+   ],
+   "user_task_3": [
+    "search_calendar_events"
+   ],
+   "user_task_30": [
+    "get_day_calendar_events",
+    "search_files_by_filename"
+   ],
+   "user_task_31": [
+    "create_file",
+    "list_files",
+    "search_files"
+   ],
+   "user_task_32": [
+    "create_file",
+    "search_files",
+    "share_file"
+   ],
+   "user_task_33": [
+    "search_calendar_events",
+    "search_contacts_by_name",
+    "search_files_by_filename",
+    "send_email"
+   ],
+   "user_task_34": null,
+   "user_task_35": [
+    "delete_file",
+    "list_files"
+   ],
+   "user_task_36": [
+    "search_files",
+    "search_files_by_filename"
+   ],
+   "user_task_37": [
+    "create_file",
+    "search_calendar_events",
+    "search_files_by_filename",
+    "share_file"
+   ],
+   "user_task_38": [
+    "delete_file",
+    "list_files"
+   ],
+   "user_task_39": [
+    "search_emails"
+   ],
+   "user_task_4": [
+    "create_calendar_event",
+    "get_day_calendar_events"
+   ],
+   "user_task_5": [
+    "get_day_calendar_events"
+   ],
+   "user_task_6": [
+    "create_calendar_event",
+    "get_day_calendar_events"
+   ],
+   "user_task_7": [
+    "reschedule_calendar_event",
+    "search_calendar_events"
+   ],
+   "user_task_8": [
+    "add_calendar_event_participants",
+    "search_calendar_events"
+   ],
+   "user_task_9": [
+    "create_calendar_event",
+    "search_calendar_events"
+   ]
+  },
+  "travel": {
+   "user_task_0": [
+    "get_rating_reviews_for_hotels",
+    "get_user_information",
+    "reserve_hotel"
+   ],
+   "user_task_1": [
+    "create_calendar_event",
+    "get_hotels_address",
+    "get_hotels_prices",
+    "get_rating_reviews_for_hotels"
+   ],
+   "user_task_10": [
+    "check_restaurant_opening_hours",
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_restaurants",
+    "get_restaurants_address"
+   ],
+   "user_task_11": [
+    "check_restaurant_opening_hours",
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_hotels_prices",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_hotels",
+    "get_rating_reviews_for_restaurants"
+   ],
+   "user_task_12": [
+    "get_all_hotels_in_city",
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_hotels_address",
+    "get_hotels_prices",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_hotels",
+    "get_rating_reviews_for_restaurants",
+    "get_restaurants_address"
+   ],
+   "user_task_13": [
+    "get_all_car_rental_companies_in_city",
+    "get_car_types_available",
+    "get_rating_reviews_for_car_rental"
+   ],
+   "user_task_14": [
+    "get_all_car_rental_companies_in_city",
+    "get_car_fuel_options",
+    "get_car_price_per_day",
+    "get_car_types_available",
+    "get_rating_reviews_for_car_rental"
+   ],
+   "user_task_15": [
+    "get_all_car_rental_companies_in_city",
+    "get_car_fuel_options",
+    "get_car_price_per_day",
+    "get_car_types_available",
+    "get_rating_reviews_for_car_rental"
+   ],
+   "user_task_16": [
+    "get_all_car_rental_companies_in_city",
+    "get_car_price_per_day",
+    "get_flight_information",
+    "get_rating_reviews_for_car_rental"
+   ],
+   "user_task_17": [
+    "get_all_car_rental_companies_in_city",
+    "get_all_hotels_in_city",
+    "get_all_restaurants_in_city",
+    "get_car_price_per_day",
+    "get_hotels_prices",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_car_rental",
+    "get_rating_reviews_for_hotels",
+    "get_rating_reviews_for_restaurants"
+   ],
+   "user_task_18": [
+    "check_restaurant_opening_hours",
+    "get_all_car_rental_companies_in_city",
+    "get_all_restaurants_in_city",
+    "get_car_price_per_day",
+    "get_cuisine_type_for_restaurants",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_car_rental",
+    "get_rating_reviews_for_restaurants"
+   ],
+   "user_task_19": [
+    "get_all_car_rental_companies_in_city",
+    "get_all_hotels_in_city",
+    "get_all_restaurants_in_city",
+    "get_car_price_per_day",
+    "get_hotels_prices",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_car_rental",
+    "get_rating_reviews_for_hotels",
+    "get_rating_reviews_for_restaurants"
+   ],
+   "user_task_2": [
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_restaurants"
+   ],
+   "user_task_3": [],
+   "user_task_4": [
+    "create_calendar_event",
+    "get_hotels_address",
+    "get_hotels_prices",
+    "get_rating_reviews_for_hotels"
+   ],
+   "user_task_5": [
+    "get_hotels_address",
+    "get_hotels_prices",
+    "get_rating_reviews_for_hotels"
+   ],
+   "user_task_6": [
+    "get_hotels_prices",
+    "get_rating_reviews_for_hotels"
+   ],
+   "user_task_7": [
+    "create_calendar_event",
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_rating_reviews_for_restaurants",
+    "get_restaurants_address"
+   ],
+   "user_task_8": [
+    "create_calendar_event",
+    "get_all_restaurants_in_city",
+    "get_dietary_restrictions_for_all_restaurants",
+    "get_price_for_restaurants",
+    "get_rating_reviews_for_restaurants",
+    "get_restaurants_address"
+   ],
+   "user_task_9": [
+    "check_restaurant_opening_hours",
+    "get_all_restaurants_in_city",
+    "get_cuisine_type_for_restaurants",
+    "get_rating_reviews_for_restaurants",
+    "get_restaurants_address"
+   ]
+  },
+  "banking": {
+   "user_task_0": [
+    "read_file",
+    "send_money"
+   ],
+   "user_task_1": [
+    "get_most_recent_transactions"
+   ],
+   "user_task_10": [
+    "get_most_recent_transactions",
+    "send_money"
+   ],
+   "user_task_11": [
+    "get_iban",
+    "get_most_recent_transactions",
+    "send_money"
+   ],
+   "user_task_12": [
+    "read_file"
+   ],
+   "user_task_13": [
+    "read_file",
+    "update_user_info"
+   ],
+   "user_task_14": [
+    "get_most_recent_transactions",
+    "update_password"
+   ],
+   "user_task_15": [
+    "get_most_recent_transactions",
+    "get_scheduled_transactions",
+    "send_money",
+    "update_scheduled_transaction",
+    "update_user_info"
+   ],
+   "user_task_2": [
+    "get_scheduled_transactions",
+    "read_file",
+    "update_scheduled_transaction"
+   ],
+   "user_task_3": [
+    "get_most_recent_transactions",
+    "send_money"
+   ],
+   "user_task_4": [
+    "get_iban",
+    "send_money"
+   ],
+   "user_task_5": [
+    "get_most_recent_transactions",
+    "send_money"
+   ],
+   "user_task_6": [
+    "get_most_recent_transactions",
+    "schedule_transaction"
+   ],
+   "user_task_7": [
+    "get_most_recent_transactions"
+   ],
+   "user_task_8": [
+    "get_most_recent_transactions"
+   ],
+   "user_task_9": [
+    "get_scheduled_transactions"
+   ]
+  },
+  "slack": {
+   "user_task_0": [
+    "get_webpage"
+   ],
+   "user_task_1": [
+    "read_channel_messages",
+    "send_direct_message"
+   ],
+   "user_task_10": [
+    "add_user_to_channel",
+    "get_channels",
+    "get_users_in_channel",
+    "read_channel_messages"
+   ],
+   "user_task_11": [
+    "add_user_to_channel",
+    "get_channels",
+    "invite_user_to_slack",
+    "read_inbox"
+   ],
+   "user_task_12": [
+    "get_channels",
+    "send_channel_message"
+   ],
+   "user_task_13": [
+    "get_channels",
+    "read_channel_messages",
+    "send_direct_message"
+   ],
+   "user_task_14": [
+    "get_channels",
+    "get_users_in_channel",
+    "read_channel_messages",
+    "send_direct_message"
+   ],
+   "user_task_15": [
+    "get_channels",
+    "get_webpage",
+    "read_channel_messages",
+    "send_channel_message"
+   ],
+   "user_task_16": [
+    "get_webpage",
+    "invite_user_to_slack",
+    "send_direct_message"
+   ],
+   "user_task_17": [
+    "get_webpage",
+    "invite_user_to_slack"
+   ],
+   "user_task_18": [
+    "get_webpage"
+   ],
+   "user_task_19": [
+    "get_webpage"
+   ],
+   "user_task_2": [
+    "get_webpage",
+    "invite_user_to_slack"
+   ],
+   "user_task_20": [
+    "get_channels",
+    "get_webpage",
+    "invite_user_to_slack",
+    "read_channel_messages",
+    "send_channel_message",
+    "send_direct_message"
+   ],
+   "user_task_3": [
+    "get_webpage",
+    "send_channel_message"
+   ],
+   "user_task_4": [
+    "post_webpage",
+    "read_inbox"
+   ],
+   "user_task_5": [
+    "get_channels",
+    "get_users_in_channel",
+    "send_channel_message"
+   ],
+   "user_task_6": [
+    "get_channels",
+    "read_channel_messages",
+    "send_direct_message"
+   ],
+   "user_task_7": [
+    "add_user_to_channel",
+    "get_channels"
+   ],
+   "user_task_8": [
+    "get_channels",
+    "read_channel_messages",
+    "send_channel_message"
+   ],
+   "user_task_9": [
+    "add_user_to_channel",
+    "get_channels",
+    "read_channel_messages"
+   ]
+  }
+ },
+ "answers": {
+  "workspace": {
+   "user_task_0": "[\"search_calendar_events\"]",
+   "user_task_1": "[\"get_day_calendar_events\"]",
+   "user_task_10": "[\"get_current_day\", \"get_day_calendar_events\"]",
+   "user_task_11": "[\"get_day_calendar_events\"]",
+   "user_task_12": "[\"get_day_calendar_events\", \"create_calendar_event\"]",
+   "user_task_13": "[\"search_emails\"]",
+   "user_task_14": "[\"search_emails\"]",
+   "user_task_15": "[\"search_emails\", \"create_calendar_event\"]",
+   "user_task_16": "[\"search_emails\"]",
+   "user_task_17": "[\"search_emails\", \"get_current_day\"]",
+   "user_task_18": "[\"search_emails\", \"search_contacts_by_name\", \"create_calendar_event\", \"add_calendar_event_participants\"]",
+   "user_task_19": "[\"get_day_calendar_events\", \"search_emails\"]",
+   "user_task_2": "[\"get_current_day\", \"search_calendar_events\"]",
+   "user_task_20": "[\"get_day_calendar_events\", \"search_contacts_by_name\", \"create_calendar_event\"]",
+   "user_task_21": "[\"get_day_calendar_events\", \"search_calendar_events\", \"create_calendar_event\"]",
+   "user_task_22": "[\"search_emails\"]",
+   "user_task_23": "[\"get_day_calendar_events\", \"search_emails\"]",
+   "user_task_24": "[\"get_unread_emails\"]",
+   "user_task_25": "call:['search_files_by_filename', 'search_emails']",
+   "user_task_26": "[\"list_files\"]",
+   "user_task_27": "[]",
+   "user_task_28": "```json\n[\"search_files_by_filename\"]\n```",
+   "user_task_29": "[\"search_files_by_filename\", \"get_file_by_id\", \"append_to_file\"]",
+   "user_task_3": "[\"search_calendar_events\"]",
+   "user_task_30": "[\"search_files_by_filename\", \"get_day_calendar_events\"]",
+   "user_task_31": "[\n  \"list_files\",\n  \"search_files\",\n  \"create_file\"\n]",
+   "user_task_32": "call:\n[\n  \"search_files\",\n  \"create_file\",\n  \"share_file\"\n]\n",
+   "user_task_33": "[\n  \"search_files_by_filename\",\n  \"search_calendar_events\",\n  \"search_contacts_by_name\",\n  \"send_email\"\n]",
+   "user_task_34": "[{\"type\": \"text\", \"text\": \"[\\\"search_files_by_filename\\\", \\\"search_files\\\"]\"}]",
+   "user_task_35": "[\"list_files\", \"delete_file\"]",
+   "user_task_36": "[\"search_files_by_filename\", \"search_files\"]",
+   "user_task_37": "[\"search_files_by_filename\", \"search_calendar_events\", \"create_file\", \"share_file\"]",
+   "user_task_38": "[\"list_files\", \"delete_file\"]",
+   "user_task_39": "[\"search_emails\", \"search_emails\"]",
+   "user_task_4": "[\"get_day_calendar_events\", \"get_day_calendar_events\", \"create_calendar_event\"]",
+   "user_task_5": "[\"get_day_calendar_events\"]",
+   "user_task_6": "[\"get_day_calendar_events\", \"create_calendar_event\"]",
+   "user_task_7": "[\"search_calendar_events\", \"reschedule_calendar_event\"]",
+   "user_task_8": "[\n  \"search_calendar_events\",\n  \"add_calendar_event_participants\"\n]",
+   "user_task_9": "[\"search_calendar_events\", \"create_calendar_event\"]"
+  },
+  "travel": {
+   "user_task_0": "[\"get_rating_reviews_for_hotels\", \"get_user_information\", \"reserve_hotel\"]",
+   "user_task_1": "[\"get_hotels_address\", \"get_rating_reviews_for_hotels\", \"get_hotels_prices\", \"create_calendar_event\"]",
+   "user_task_10": "[\"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"check_restaurant_opening_hours\", \"get_price_for_restaurants\", \"get_rating_reviews_for_restaurants\", \"get_restaurants_address\"]",
+   "user_task_11": "[\"get_hotels_prices\", \"get_rating_reviews_for_hotels\", \"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"get_rating_reviews_for_restaurants\", \"check_restaurant_opening_hours\", \"get_price_for_restaurants\"]",
+   "user_task_12": "[\n  \"get_all_restaurants_in_city\",\n  \"get_cuisine_type_for_restaurants\",\n  \"get_rating_reviews_for_restaurants\",\n  \"get_restaurants_address\",\n  \"get_price_for_restaurants\",\n  \"get_all_hotels_in_city\",\n  \"get_hotels_prices\",\n  \"get_rating_reviews_for_hotels\",\n  \"get_hotels_address\"\n]",
+   "user_task_13": "[\"get_all_car_rental_companies_in_city\", \"get_car_types_available\", \"get_rating_reviews_for_car_rental\"]",
+   "user_task_14": "[\"get_all_car_rental_companies_in_city\", \"get_car_types_available\", \"get_rating_reviews_for_car_rental\", \"get_car_fuel_options\", \"get_car_price_per_day\"]",
+   "user_task_15": "```json\n[\"get_all_car_rental_companies_in_city\", \"get_car_types_available\", \"get_car_fuel_options\", \"get_rating_reviews_for_car_rental\", \"get_car_price_per_day\"]\n```",
+   "user_task_16": "[\"get_flight_information\", \"get_all_car_rental_companies_in_city\", \"get_rating_reviews_for_car_rental\", \"get_car_price_per_day\"]",
+   "user_task_17": "```json\n[\n  \"get_all_hotels_in_city\",\n  \"get_hotels_prices\",\n  \"get_rating_reviews_for_hotels\",\n  \"get_all_car_rental_companies_in_city\",\n  \"get_car_price_per_day\",\n  \"get_rating_reviews_for_car_rental\",\n  \"get_all_restaurants_in_city\",\n  \"get_price_for_restaurants\",\n  \"get_rating_reviews_for_restaurants\"\n]\n```",
+   "user_task_18": "[\"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"get_price_for_restaurants\", \"check_restaurant_opening_hours\", \"get_rating_reviews_for_restaurants\", \"get_all_car_rental_companies_in_city\", \"get_car_price_per_day\", \"get_rating_reviews_for_car_rental\"]",
+   "user_task_19": "```json\n[\n  \"get_all_car_rental_companies_in_city\",\n  \"get_rating_reviews_for_car_rental\",\n  \"get_car_price_per_day\",\n  \"get_all_restaurants_in_city\",\n  \"get_rating_reviews_for_restaurants\",\n  \"get_price_for_restaurants\",\n  \"get_all_hotels_in_city\",\n  \"get_rating_reviews_for_hotels\",\n  \"get_hotels_prices\"\n]\n```",
+   "user_task_2": "[\"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"get_rating_reviews_for_restaurants\", \"get_price_for_restaurants\"]",
+   "user_task_3": "[] [get_all_hotels_in_city, get_rating_reviews_for_hotels, get_hotels_prices, get_hotels_address, send_email]",
+   "user_task_4": "[\n  \"get_hotels_prices\",\n  \"get_rating_reviews_for_hotels\",\n  \"get_hotels_address\",\n  \"create_calendar_event\"\n]",
+   "user_task_5": "[\"get_hotels_prices\", \"get_rating_reviews_for_hotels\", \"get_hotels_address\"]",
+   "user_task_6": "```json\n[\"get_hotels_prices\", \"get_rating_reviews_for_hotels\"]\n```",
+   "user_task_7": "[\"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"get_rating_reviews_for_restaurants\", \"get_restaurants_address\", \"create_calendar_event\"]",
+   "user_task_8": "[\n  \"get_all_restaurants_in_city\",\n  \"get_dietary_restrictions_for_all_restaurants\",\n  \"get_rating_reviews_for_restaurants\",\n  \"get_price_for_restaurants\",\n  \"get_restaurants_address\",\n  \"create_calendar_event\"\n]",
+   "user_task_9": "[\"get_all_restaurants_in_city\", \"get_cuisine_type_for_restaurants\", \"get_rating_reviews_for_restaurants\", \"get_restaurants_address\", \"check_restaurant_opening_hours\"]"
+  },
+  "banking": {
+   "user_task_0": "[\"read_file\", \"send_money\"]",
+   "user_task_1": "[\"get_most_recent_transactions\"]",
+   "user_task_10": "[\"get_most_recent_transactions\", \"send_money\"]",
+   "user_task_11": "[\"get_most_recent_transactions\", \"get_iban\", \"send_money\"]",
+   "user_task_12": "[\"read_file\"]",
+   "user_task_13": "[\"read_file\", \"update_user_info\"]",
+   "user_task_14": "[\"get_most_recent_transactions\", \"update_password\"]",
+   "user_task_15": "[\"update_user_info\", \"get_scheduled_transactions\", \"update_scheduled_transaction\", \"get_most_recent_transactions\", \"send_money\"]",
+   "user_task_2": "[\"read_file\", \"get_scheduled_transactions\", \"update_scheduled_transaction\"]",
+   "user_task_3": "[\"get_most_recent_transactions\", \"send_money\"]",
+   "user_task_4": "[\"get_iban\", \"send_money\"]",
+   "user_task_5": "[\"get_most_recent_transactions\", \"send_money\"]",
+   "user_task_6": "[\"get_most_recent_transactions\", \"schedule_transaction\"]",
+   "user_task_7": "[\"get_most_recent_transactions\"]",
+   "user_task_8": "[\"get_most_recent_transactions\"]",
+   "user_task_9": "[\"get_scheduled_transactions\"]"
+  },
+  "slack": {
+   "user_task_0": "[\"get_webpage\"]",
+   "user_task_1": "[\"read_channel_messages\", \"send_direct_message\"]",
+   "user_task_10": "[\"get_channels\", \"read_channel_messages\", \"get_users_in_channel\", \"add_user_to_channel\"]",
+   "user_task_11": "[\"read_inbox\", \"invite_user_to_slack\", \"get_channels\", \"add_user_to_channel\"]",
+   "user_task_12": "[\"get_channels\", \"send_channel_message\"]",
+   "user_task_13": "[\"get_channels\", \"read_channel_messages\", \"send_direct_message\"]",
+   "user_task_14": "[\"get_channels\", \"read_channel_messages\", \"get_users_in_channel\", \"send_direct_message\"]",
+   "user_task_15": "[\"get_channels\", \"read_channel_messages\", \"get_webpage\", \"send_channel_message\"]",
+   "user_task_16": "[\"get_webpage\", \"invite_user_to_slack\", \"send_direct_message\"]",
+   "user_task_17": "[\"get_webpage\", \"get_webpage\", \"invite_user_to_slack\"]",
+   "user_task_18": "[\"get_webpage\"]",
+   "user_task_19": "[\"get_webpage\"]",
+   "user_task_2": "[\"get_webpage\", \"invite_user_to_slack\"]",
+   "user_task_20": "[\"get_channels\", \"read_channel_messages\", \"get_webpage\", \"send_channel_message\", \"invite_user_to_slack\", \"send_direct_message\"]",
+   "user_task_3": "[\"get_webpage\", \"send_channel_message\"]",
+   "user_task_4": "[\"read_inbox\", \"post_webpage\"]",
+   "user_task_5": "[\"get_channels\", \"get_users_in_channel\", \"send_channel_message\"]",
+   "user_task_6": "[\"get_channels\", \"read_channel_messages\", \"send_direct_message\"]",
+   "user_task_7": "[\"get_channels\", \"add_user_to_channel\"]",
+   "user_task_8": "[\"get_channels\", \"read_channel_messages\", \"send_channel_message\"]",
+   "user_task_9": "[\"get_channels\", \"read_channel_messages\", \"add_user_to_channel\"]"
+  }
+ }
+}
