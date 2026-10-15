@@ -3,12 +3,15 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml)
 
-ACF-SDK is a security layer for LLM agents. It checks everything an agent takes
-in and every action it is about to take — the user's prompt, retrieved
-documents, tool output, tool calls and memory — against policies you write as
-code, and returns **ALLOW**, **SANITISE** or **BLOCK**. Decisions are made in a
-separate sidecar process the agent cannot reach into, so they do not depend on
-the agent's code or on which model runs it.
+ACF-SDK is an application-level policy layer for LLM agents. It checks
+everything an agent takes in and every action it is about to take — the user's
+prompt, retrieved documents, tool output, tool calls and memory — against
+policies you write as code, and returns **ALLOW**, **SANITISE** or **BLOCK**.
+Decisions are made in a separate sidecar process the agent cannot reach into,
+with no model in the decision, so they do not depend on the agent's code or on
+which model runs it. That makes it a fit for agents on local hardware with small
+open-weight models: on AgentDojo it removes 92–93% of successful attacks for
+models from 8B to 120B parameters, at about half a millisecond per check.
 
 **New here?** The [plain-language overview](docs/overview.md) explains what the
 SDK and sidecar do before any of the detail below.
@@ -25,23 +28,32 @@ long after a front-door filter has looked at the prompt. Because agents act
 through tools, a successful injection is not just a wrong answer: it can send
 email, move money or delete files.
 
-The model itself is not a reliable last line of defence. Frontier models resist
-many known attacks, but smaller and self-hosted models often do not, and even
-robust models fail against attacks tailored to them. ACF-SDK takes the position
-that enforcement should hold regardless of the model:
+Most defences put the decision in a model: they train the agent's model to
+resist, or add a guard model that classifies text as safe or unsafe. That binds
+security to the model. A team that runs a small model locally, for cost or to
+keep data in house, gets the least robust model, and a guard model adds an
+inference call to every step. Detection also fails against attacks written to
+look benign: in an AgentDojo run whose injections were written as polite notes
+signed by the user, ACF's own lexical scanner flagged none of the 11,228 tool
+results it screened.
 
-- **Check every channel**, not just the prompt: each point where content enters
-  the agent or an action leaves it is an enforcement point.
-- **Decide outside the agent.** The policy decision point is an isolated Go
-  sidecar. The agent process only holds a thin client.
-- **Write policy as code.** Rules are Rego (Open Policy Agent), versioned and
-  hot-reloaded; detection data (patterns, weights) is kept separate from
-  decision logic.
-- **Use what the application knows.** A deployment can declare what a task is
-  allowed to do — which tools, which argument values, which sources it trusts —
-  and the sidecar enforces that for the whole agent session. This is what stops
-  an attacker using a tool the task legitimately needs, such as sending an email
-  to an address an injected page planted.
+ACF-SDK makes security a property of the application around the model instead:
+
+- **Policy decides; detection only informs.** Scanners produce evidence. The
+  decision rests on what the task is allowed to do, so it holds whether or not
+  the attack was recognised, and whether the model was fooled, confused or
+  simply wrong.
+- **Where a value came from informs a decision but never grants authority.** A
+  payment to an account number the agent read in a document is blocked, even
+  when nothing in the document or the call looks malicious, unless the user
+  vouched for it.
+- **Use what the application knows.** A deployment declares what a task may do
+  — which tools, which argument values, which sources it controls — and the
+  sidecar enforces it for the whole agent session. The rules are shared; each
+  application supplies its own policy data.
+- **Check every channel** where content enters the agent or an action leaves it,
+  and **decide outside the agent**, in an isolated Go sidecar that invokes no
+  model and adds about half a millisecond per check.
 
 ---
 
@@ -281,19 +293,33 @@ CI runs on every push and pull request to `main`:
 
 ## Evaluation
 
-| What | Where | Result so far |
-|---|---|---|
-| AgentDojo, live agent (default benchmark) | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Three local models (Qwen3 8B, Gemma 4 26B, gpt-oss-120b), 949 attacked cases each. Undefended attack success is 11.3%, 19.6% and 37.9%; with scope and the provenance rule it is 0.8%, 1.6% and 2.7%, removing 92–93% of successful attacks for every model. The cost is 9–17 points of benign task completion, about half recovered when the user confirms destinations. A scope the model derives from the request, instead of the benchmark's reference solution, keeps the same security at a further utility cost |
-| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope, 22.2% with the provenance rule alone, and 3.1% with both. Lexical detection never fires on this attack |
-| Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/), [`benchmarkv2/agentdojo/latency_agentdojo.py`](benchmarkv2/agentdojo/latency_agentdojo.py) | On a Windows laptop over named pipes: a plain hook call costs about 0.21–0.26 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. With a session, task scope and provenance tracking, on AgentDojo's payloads: 0.53 ms at p50 and 3.1 ms at p99, about 75 MB for the sidecar |
-| InjecAgent, live agent | [`benchmarkv2/injecagent/`](benchmarkv2/injecagent/) | Runs with any OpenAI-compatible model. The models tried so far resist InjecAgent on their own, so it measures model robustness more than ACF |
-| Agent Security Bench | [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harness scaffolded; upstream adapter to write |
-| Detector catch rates | [`benchmarks/`](benchmarks/) | Model-free replay of public datasets |
+On [AgentDojo](https://github.com/ethz-spylab/agentdojo), the default benchmark,
+with three open-weight models served on local hardware (949 attacked cases each):
 
-AgentDojo is the default benchmark: `make bench-setup` once, then `make bench`
-for the model-free replay (about 7 minutes) or `make bench-agent MODEL=... BASE_URL=...`
-for a live agent. How each benchmark is run is in
-[`benchmarkv2/README.md`](benchmarkv2/README.md).
+| Agent model | Attack success, undefended | With ACF | Attacks removed | Benign tasks completed, undefended → with ACF |
+|---|---:|---:|---:|---:|
+| Qwen3 8B | 11.3% | 0.8% | 93% | 39% → 30% |
+| Gemma 4 26B | 19.6% | 1.6% | 92% | 84% → 67% |
+| gpt-oss-120b | 37.9% | 2.7% | 93% | 72% → 55% |
+
+- **The protection comes from policy, not detection.** Content scanning alone
+  changed nothing on this attack; task scope and the provenance rule did the
+  work.
+- **It holds without a model's help**: an agent scripted to obey every injected
+  instruction goes from 98.0% attack success to 3.1%.
+- **What remains** are attacks with no destination to track, such as opening a
+  web page. No payment, message or invitation to an attacker's address got
+  through with any model.
+- **The cost** is benign task completion, mostly where the user wants the agent
+  to act on an address or account it read; asking the user to confirm the
+  destination recovers about half of it. Each check takes about 0.5 ms.
+
+Full results, the scanner comparison, latency, limits and the run behind every
+number: [docs/evaluation.md](docs/evaluation.md). To reproduce: `make bench-setup`
+once, then `make bench` for the model-free replay (about 7 minutes) or
+`make bench-agent MODEL=... BASE_URL=...` for a live agent. Other benchmarks
+(runtime overhead, InjecAgent, Agent Security Bench) are in
+[`benchmarkv2/`](benchmarkv2/README.md).
 
 ---
 
@@ -340,6 +366,7 @@ gaps against MITRE ATLAS.
 ## Documentation
 
 - [Overview](docs/overview.md) — plain-language introduction
+- [Evaluation](docs/evaluation.md) — AgentDojo results with three local models, scanners, latency, limits
 - [Architecture](docs/architecture.md) — full design, wire protocol, pipeline
 - [Application policy layer](docs/application-policy-layer.md) — sessions, task scope, tool output, tainting
 - [Pipeline](docs/pipeline.md) — stage-by-stage detail
