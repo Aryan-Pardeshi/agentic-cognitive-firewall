@@ -259,12 +259,23 @@ cd demo && docker compose up --build                  # nine attack scenarios, n
 ```bash
 make test               # Go unit tests, including the Rego policy tests
 make sdk-test-python    # Python SDK tests
+make sdk-test-ts        # TypeScript SDK tests (against a fake sidecar)
+make examples           # every example against a freshly built sidecar
 make integration        # end-to-end tests against a freshly built sidecar
+make test-all           # all of the above, plus the benchmark tests
 make opa-test           # Rego tests with the opa binary, if you have it
 ```
 
-CI runs the Go and Python tests on Ubuntu and the integration suite on Ubuntu
-and Windows.
+CI runs on every push and pull request to `main`:
+
+| Job | What it runs |
+|---|---|
+| Go tests | Sidecar unit tests and Rego policy tests, `go vet` |
+| Integration tests | The real sidecar binary against the adversarial corpus, probes and session flows, on Ubuntu and Windows |
+| Python tests | The Python SDK, and the framework adapters against real LangChain |
+| TypeScript tests | The TypeScript SDK against a fake sidecar that verifies every frame |
+| Examples | Every example in `examples/` against a freshly built sidecar, under the shipped and the banking policy |
+| AgentDojo benchmark | The benchmark's tests and a two-task replay with no model |
 
 ---
 
@@ -272,14 +283,17 @@ and Windows.
 
 | What | Where | Result so far |
 |---|---|---|
+| AgentDojo, live agent (default benchmark) | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Three local models (Qwen3 8B, Gemma 4 26B, gpt-oss-120b), 949 attacked cases each. Undefended attack success is 11.3%, 19.6% and 37.9%; with scope and the provenance rule it is 0.8%, 1.6% and 2.7%, removing 92–93% of successful attacks for every model. The cost is 9–17 points of benign task completion, about half recovered when the user confirms destinations. A scope the model derives from the request, instead of the benchmark's reference solution, keeps the same security at a further utility cost |
+| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope, 22.2% with the provenance rule alone, and 3.1% with both. Lexical detection never fires on this attack |
 | Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/), [`benchmarkv2/agentdojo/latency_agentdojo.py`](benchmarkv2/agentdojo/latency_agentdojo.py) | On a Windows laptop over named pipes: a plain hook call costs about 0.21–0.26 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. With a session, task scope and provenance tracking, on AgentDojo's payloads: 0.53 ms at p50 and 3.1 ms at p99, about 75 MB for the sidecar |
 | InjecAgent, live agent | [`benchmarkv2/injecagent/`](benchmarkv2/injecagent/) | Runs with any OpenAI-compatible model. The models tried so far resist InjecAgent on their own, so it measures model robustness more than ACF |
-| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope, 22.2% with the provenance rule alone, and 3.1% with both. Lexical detection never fires on this attack |
-| AgentDojo, live agent | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Three local models (Qwen3 8B, Gemma 4 26B, gpt-oss-120b), 949 attacked cases each. Undefended attack success is 11.3%, 19.6% and 37.9%; with scope and the provenance rule it is 0.8%, 1.6% and 2.7%, removing 92–93% of successful attacks for every model. The cost is 9–17 points of benign task completion, about half recovered when the user confirms destinations. A scope the model derives from the request, instead of the benchmark's reference solution, keeps the same security at a further utility cost |
 | Agent Security Bench | [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harness scaffolded; upstream adapter to write |
 | Detector catch rates | [`benchmarks/`](benchmarks/) | Model-free replay of public datasets |
 
-How each benchmark is run is in [`benchmarkv2/README.md`](benchmarkv2/README.md).
+AgentDojo is the default benchmark: `make bench-setup` once, then `make bench`
+for the model-free replay (about 7 minutes) or `make bench-agent MODEL=... BASE_URL=...`
+for a live agent. How each benchmark is run is in
+[`benchmarkv2/README.md`](benchmarkv2/README.md).
 
 ---
 

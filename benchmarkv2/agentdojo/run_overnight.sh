@@ -2,6 +2,7 @@
 # Full AgentDojo agent-mode run against a local model, safe to leave overnight.
 #
 #   benchmarkv2/agentdojo/run_overnight.sh setup    # venv, agentdojo, sidecar, preflight
+#   benchmarkv2/agentdojo/run_overnight.sh replay   # no model: worst-case agent, every arm, a few minutes
 #   benchmarkv2/agentdojo/run_overnight.sh pilot    # 24 cases, about a minute
 #   benchmarkv2/agentdojo/run_overnight.sh full     # every suite; rerun to resume
 #   benchmarkv2/agentdojo/run_overnight.sh scanners # content scanners compared, no agent model
@@ -66,6 +67,10 @@ setup)
     "$VENV_PY" "$HERE/run_agentdojo.py" --dry-run --build-sidecar
     "$VENV_PY" -m pytest "$HERE" "$HERE/../common" -q -p no:cacheprovider
     echo "setup done. Next: $0 pilot"
+    ;;
+replay)
+    need_setup
+    "$VENV_PY" "$HERE/run_agentdojo.py" --mode replay --build-sidecar --workers "$WORKERS"
     ;;
 pilot)
     need_setup

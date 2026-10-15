@@ -64,3 +64,81 @@ jobs:
       - name: pytest
         working-directory: sdk/python
         run: python -m pytest -v
+
+      - name: pytest (framework adapters against real LangChain)
+        working-directory: sdk/python
+        run: |
+          pip install langchain-core
+          python -m pytest tests/adapters -v
+
+  typescript:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm test
+        working-directory: sdk/typescript
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+  examples:
+    name: Examples against the sidecar
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecar/go.mod
+          cache-dependency-path: sidecar/go.sum
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install the SDKs
+        run: |
+          pip install -e sdk/python langchain-core
+          cd sdk/typescript && npm ci --no-audit --no-fund && npm run build
+
+      - name: Run every example
+        run: scripts/run_examples.sh
+
+  agentdojo:
+    name: AgentDojo benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: sidecar/go.mod
+          cache-dependency-path: sidecar/go.sum
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: pip install -e sdk/python "agentdojo==0.1.35" pytest pyyaml
+
+      - name: Benchmark tests
+        run: python -m pytest benchmarkv2 benchmarks/test_run_benchmark.py -q
+
+      - name: Replay smoke run (no model)
+        # Two user tasks per suite with every injection task, undefended and
+        # with scope plus the provenance rule. The full replay is `make bench`.
+        run: |
+          python benchmarkv2/agentdojo/run_agentdojo.py --mode replay --build-sidecar \
+            --limit 2 --arms none,full-task-taint --results-dir "$RUNNER_TEMP/agentdojo"
+          cat "$RUNNER_TEMP"/agentdojo/*/summary.md

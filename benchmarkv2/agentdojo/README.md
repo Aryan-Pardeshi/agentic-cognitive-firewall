@@ -1,5 +1,13 @@
 # AgentDojo with ACF in the agent loop
 
+This is ACF's default benchmark. From the repository root:
+
+```sh
+make bench-setup     # once: venv, agentdojo 0.1.35, sidecar, preflight
+make bench           # model-free replay, every arm, about 7 minutes
+make bench-agent MODEL=<model id> BASE_URL=<OpenAI-compatible endpoint>   # a live agent
+```
+
 AgentDojo scores both sides of a defence on the same tasks:
 
 - **benign utility**: the agent finishes the user's task with no attack present

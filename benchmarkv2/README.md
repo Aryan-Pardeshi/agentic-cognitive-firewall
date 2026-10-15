@@ -1,15 +1,26 @@
 # benchmarkv2
 
-Live-agent evaluations for the paper's evaluation section. Each benchmark has
-its own directory with a pinned manifest, a runner, tests, a README and its
-results.
+Evaluations of ACF with live and scripted agents. Each benchmark has its own
+directory with a pinned manifest, a runner, tests, a README and its results.
+
+**AgentDojo is the default benchmark.** It scores task completion alongside
+attack success, many of its attacks reuse a tool the user's task needs, and it
+is the benchmark CaMeL, Progent and FIDES report on.
+
+```sh
+make bench-setup                     # once: venv, agentdojo 0.1.35, sidecar, preflight
+make bench                           # no model: worst-case agent, every arm, about 7 minutes
+make bench-agent MODEL=gemma4 BASE_URL=http://localhost:8000/v1   # a live agent, hours
+```
+
+CI runs AgentDojo's tests and a two-task replay on every push.
 
 | Directory | Benchmark | What it measures | Status |
 |---|---|---|---|
-| [`injecagent/`](injecagent/) | InjecAgent | Attack success rate of a live LLM agent against indirect prompt injection, with and without ACF in the loop | Working; pilot run done |
-| [`agentdojo/`](agentdojo/) | AgentDojo | Benign utility, utility under attack and ASR, the security-and-utility trade-off, and the basis for comparison with CaMeL and Progent | Working: model-free replay run; live-agent mode ready, not yet run |
-| [`asb/`](asb/) | Agent Security Bench | Five attack classes across all four enforcement points, and which hook intercepts which class | Scaffold; upstream adapter to write |
-| [`overhead/`](overhead/) | Runtime overhead | Latency and throughput ACF adds, from single sidecar steps up to a Python SDK hook call | Working; full run done |
+| [`agentdojo/`](agentdojo/) | **AgentDojo (default)** | Benign utility, utility under attack and attack success, with ACF in the agent loop; model-free replay and live agents | Working: replay, and three local models (Qwen3 8B, Gemma 4, gpt-oss-120b) end to end |
+| [`overhead/`](overhead/) | Runtime overhead | Latency and throughput ACF adds, from single sidecar steps up to a Python SDK hook call | Working; full run done. `agentdojo/latency_agentdojo.py` measures hooks with sessions on AgentDojo payloads |
+| [`injecagent/`](injecagent/) | InjecAgent | Attack success rate of a live LLM agent against indirect prompt injection | Working; the models tried resist it on their own, so it measures the model more than ACF |
+| [`asb/`](asb/) | Agent Security Bench | Five attack classes across the enforcement points | Scaffold; upstream adapter to write |
 | [`common/`](common/) | — | Shared plumbing: pinned downloads, sidecar startup, arms, provenance, result writing | Working |
 
 The v1 runner in `benchmarks/` stays as it is. It replays benchmark text
