@@ -1,18 +1,22 @@
 {
   "name": "@acf-sdk/acf",
-  "version": "0.1.0",
-  "description": "Agentic Cognitive Firewall SDK — TypeScript client (v2, deferred)",
+  "version": "0.2.0",
+  "description": "Agentic Cognitive Firewall SDK for Node: the policy enforcement point, with sessions, task scope and tool-result screening",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
+    "pretest": "tsc",
     "test": "node --test tests/"
   },
   "engines": {
     "node": ">=18"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@types/node": "^20.19.43",
     "typescript": "^5.4.0"
   }
 }
