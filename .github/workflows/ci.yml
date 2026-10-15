@@ -130,7 +130,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install
-        run: pip install -e sdk/python "agentdojo==0.1.35" pytest pyyaml
+        # numpy, scikit-learn and pydantic are the semantic scanner's light
+        # dependencies: one benchmark test builds its pattern library.
+        run: pip install -e sdk/python "agentdojo==0.1.35" pytest pyyaml numpy scikit-learn pydantic
 
       - name: Benchmark tests
         run: python -m pytest benchmarkv2 benchmarks/test_run_benchmark.py -q
