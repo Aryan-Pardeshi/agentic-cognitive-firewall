@@ -145,7 +145,7 @@ state store ──hydrates──▶ risk context ──pipeline──▶ decisio
 
 ## IPC transport
 
-Communication between the PEP and PDP uses a Unix Domain Socket at `/tmp/acf.sock` with length-prefixed binary framing.
+Communication between the PEP and PDP uses a Unix domain socket at `/tmp/acf.sock` on Linux and macOS, or a named pipe at `\\.\pipe\acf` on Windows (override with `ACF_SOCKET_PATH`), with length-prefixed binary framing and one connection per request. The channel is authenticated, not encrypted: the property required is integrity across the process boundary. The Python and TypeScript SDKs produce byte-identical frames.
 
 **Frame format:**
 
@@ -172,91 +172,99 @@ The sidecar validates the 54-byte header before touching the JSON payload. An in
 
 ## Pipeline stages
 
-All stages run inside the sidecar. The pipeline short-circuits and returns BLOCK immediately if any stage produces a hard block signal.
+All stages run inside the sidecar and share one risk context, which keeps the
+original payload alongside the canonical text, signals, score and session state
+derived from it. In the default strict mode, a hard-block signal at any stage
+ends evaluation with BLOCK.
 
-### 1. Validate
-HMAC verification, nonce check against replay store, schema validation. Invalid frames are dropped in microseconds before any payload parsing.
+| Stage | What it does |
+|---|---|
+| Verify (transport) | HMAC verification in constant time and the nonce replay check, before the payload is parsed |
+| 1. Validate | Looks the hook up in the registry, checks required fields and the hook's payload shape, assigns provenance from the hook, and sets the client's trust-relevant fields aside (its claimed provenance, score and state are not trusted; its signals count only for weighted categories, and only to add risk) |
+| 2. Session | Loads the session's state σ: the declared task scope, the values read from untrusted content, and the values a principal vouched for. For a tool call, finds argument values that are untrusted |
+| 3. Normalise | Recursive URL and Base64 decoding, Unicode NFKC normalisation, zero-width character removal, whitespace collapsing, leetspeak substitution |
+| 4. Scan | Aho-Corasick lexical scan against the pattern library, plus hook-specific checks: tool allowlist, memory keys, shell metacharacters, path traversal |
+| 5. Aggregate | Weights each signal by its category, takes the maximum, and multiplies by the provenance trust weight, giving a score from 0 to 1 |
+| 6. Policy | Evaluates the Rego module registered for the hook against the request, signals, score and session state. The only stage that decides; every module is fail-closed |
+| 7. Execute | Applies the transformation a SANITISE decision declares (redaction) to the original payload |
+| 8. Record | Updates the session: values in an admitted tool result or retrieved chunk become untrusted, values in the prompt or declared scope trusted. Blocked content records nothing |
 
-### 2. Normalise
-Recursive URL and Base64/hex decoding, Unicode NFKC normalisation, zero-width character stripping, leetspeak cleaning. Produces canonical text for scanning.
-
-### 3. Scan
-Aho-Corasick multi-pattern lexical scan on canonical text, permission checks (allowlist lookups), integrity checks (HMAC verification for memory reads). Semantic scan runs only on mid-band inputs that lexical scanning cannot resolve.
-
-### 4. Aggregate
-Combines scanner signals into a risk score, applies provenance trust weight, produces the final risk context object for OPA.
+The semantic scanner, when enabled, runs in the SDK on the agent's side of the
+boundary, before any of these stages. Its output arrives as client signals,
+which can raise a request's risk but never lower it.
 
 ### Policy engine
-OPA Go SDK embedded in the sidecar. Evaluates the Rego policy file matching the `hook_type` field. Returns a structured decision object:
+OPA Go SDK embedded in the sidecar. Evaluates the Rego package registered for
+the hook. Returns a decision and, for SANITISE, the targets to transform; the
+executor performs the transformation. The tool-call module also applies the
+task scope and the provenance rule from the session state, so a call can be
+blocked without any detection signal:
 
-```json
-{
-  "decision": "SANITISE",
-  "sanitise_targets": {
-    "matched_patterns": ["ignore previous instructions"],
-    "action": "strip_matched_segments",
-    "inject_prefix": "[WARNING: partial injection attempt detected]"
-  }
+```rego
+decision := "ALLOW" if {
+    _tool_is_permitted                # global allowlist
+    _in_task_scope                    # the task's declared tools
+    _constraints_satisfied            # the task's argument bounds
+    not _tainted_consequential_call   # provenance: no untrusted value in a sensitive argument
+    not _has_detection_signal
+    input.score < 0.4
 }
 ```
-
-OPA declares *what* to sanitise. The sidecar executor performs the actual string transformation.
 
 ---
 
 ## Policy store (PMP)
 
-Versioned YAML and Rego files on disk. Hot-reloadable — the sidecar watches for file changes and reloads without restarting.
+Rego files and their data, on disk. The policy engine re-reads the directory
+every 5 seconds and swaps in recompiled queries atomically; a compilation
+failure leaves the previous policies active. The pattern library is loaded at
+startup.
 
 ```
 policies/
 └── v1/
     ├── prompt.rego          instruction override · role escalation · thresholds
     ├── context.rego         source trust · embedded instruction · structural anomaly
-    ├── tool.rego            allowlist · shell metachar · path traversal · network
-    ├── memory.rego          HMAC stamp/verify · write scan · provenance
+    ├── tool.rego            allowlist · destination · detection · task scope · argument constraints · provenance
+    ├── tool_result.rego     score thresholds · trusted tools
+    ├── memory.rego          integrity · write scan · size limit
+    ├── task.rego            a task scope may only narrow the global allowlist
     └── data/
-        ├── policy_config.yaml         thresholds · allowlists · trust weights
-        └── jailbreak_patterns.json    versioned pattern library
+        ├── policy_config.yaml         thresholds · allowlists · trust weights · signal weights ·
+        │                              consequential_tools · sensitive_params · trusted_tools
+        └── jailbreak_patterns.json    versioned pattern library (79 phrases in 13 categories)
 ```
 
-Policy logic (Rego) and policy data (YAML/JSON) are kept separate so pattern library updates and threshold tuning never require touching decision rules.
+Policy logic (Rego) and policy data (YAML/JSON) are kept separate: the rules
+are the same for every deployment, and an application supplies the data.
+[`examples/banking/`](../examples/banking/) shows an application's policy file.
 
 ---
 
 ## Observability
 
-OTel spans are emitted asynchronously after each decision — they never add latency to the enforcement path. If the OTel sink is unavailable, enforcement continues unaffected.
-
-Key span attributes:
-
-| Attribute | Value |
-|---|---|
-| `acf.hook_type` | Which hook triggered evaluation |
-| `acf.decision` | ALLOW / SANITISE / BLOCK |
-| `acf.score` | Final aggregated risk score |
-| `acf.signals` | Named signals from scan stage |
-| `acf.provenance` | Source origin of evaluated payload |
-| `acf.policy_version` | Hash of policy file used |
-| `trace_id` | W3C trace ID — links to agent's own OTel trace |
+Today the sidecar writes a decision log with per-stage timing, off the request
+path. OpenTelemetry span emission is planned: spans would be emitted
+asynchronously after each decision, carrying the hook, decision, score, signals
+and provenance, and linking to the agent's own trace.
 
 ---
 
-## Enforcement latency budget
+## Enforcement latency
 
-| Step | Cost |
-|---|---|
-| SDK sign + frame | < 0.1ms |
-| UDS write | < 0.5ms |
-| Validate header | < 0.2ms |
-| Normalise | 1–2ms |
-| Scan | 1–3ms |
-| Aggregate + policy eval | 1–2ms |
-| UDS read | < 0.5ms |
-| **Total typical** | **4–8ms** |
-| **Total worst-case** | **~10ms** |
+Measured on a Windows laptop over named pipes (see
+[`benchmarkv2/overhead/`](../benchmarkv2/overhead/) and
+[`benchmarkv2/agentdojo/latency_agentdojo.py`](../benchmarkv2/agentdojo/latency_agentdojo.py)):
 
-OTel span emission is async and does not contribute to this budget.
+| Measurement | p50 | p99 |
+|---|---:|---:|
+| Hook call without session state, semantic scanner off | 0.21–0.26 ms | about 0.5–0.6 ms |
+| Hook call with a session, task scope and provenance tracking, on AgentDojo payloads | 0.53 ms | 3.1 ms |
+| Inside the sidecar (two-thirds of it policy evaluation) | about 0.2 ms | |
+
+A 64 KB payload takes about 6 ms, mostly normalisation. The sidecar process uses
+about 75 MB. With the semantic scanner on, the SDK adds about 0.5 ms (TF-IDF) or
+about 20 ms (sentence-transformer) per call.
 
 ---
 
@@ -264,9 +272,9 @@ OTel span emission is async and does not contribute to this budget.
 
 | Component | Language | Reason |
 |---|---|---|
-| Sidecar | Go 1.22+ | OPA Go SDK embeds natively · single binary · native UDS + goroutine concurrency |
+| Sidecar | Go 1.25+ | OPA Go SDK embeds natively · single binary · native UDS + goroutine concurrency |
 | SDK v1 | Python 3.10+ | LangGraph/LangChain first · zero external dependencies (stdlib only) |
-| SDK v2 | TypeScript / Node 18+ | Same wire protocol · deferred until v1 wire protocol is proven |
+| SDK | TypeScript / Node 18+ | Same wire protocol and payloads as Python · no runtime dependencies · no semantic scanner |
 | Policies | Rego + YAML | Declarative · hot-reloadable · testable with `opa test` |
 
 ---
@@ -301,5 +309,5 @@ Goal: auditable, testable, production-ready v1.
 - Deliverable: shippable v1 with all policies tested
 
 ### v2 (after v1 ships)
-Done: `state/ttl_store.go`, sessions, `on_tool_result`, task scope and argument tainting (see [application-policy-layer.md](application-policy-layer.md)).
-Remaining: `on_output` hook · accumulation policies · TypeScript SDK · memory hook split into `on_memory_write` / `on_memory_read` · sidecar-signed memory integrity stamps
+Done: `state/ttl_store.go`, sessions, `on_tool_result`, task scope and argument tainting (see [application-policy-layer.md](application-policy-layer.md)), and the TypeScript SDK with sessions.
+Remaining: `on_outbound` hook · accumulation policies · memory hook split into `on_memory_write` / `on_memory_read` · sidecar-signed memory integrity stamps · OpenTelemetry spans

@@ -83,20 +83,23 @@ dropped before the payload is parsed.
 ### The pipeline
 
 ```
-validate → session → normalise → scan → aggregate → OPA policy → executor
+verify → validate → session → normalise → scan → aggregate → OPA policy → execute → record
 ```
 
 | Stage | What it does |
 |---|---|
+| Verify | Checks the HMAC and nonce before the payload is parsed (in the transport) |
 | Validate | Schema checks; assigns provenance per hook and sets aside fields the client must not control |
-| Session | Loads the session's state (task scope, values read so far) for policy to use |
-| Normalise | Decodes URL and Base64, NFKC-normalises Unicode, strips zero-width characters, undoes leetspeak |
+| Session | Loads the session's state (task scope, trusted and untrusted values) and finds argument values read from untrusted content |
+| Normalise | Decodes URL and Base64, NFKC-normalises Unicode, strips zero-width characters, collapses whitespace, undoes leetspeak |
 | Scan | Aho-Corasick pattern scan, allowlist and parameter checks |
 | Aggregate | Combines signals into a 0.0–1.0 risk score, weighted by provenance |
-| OPA policy | Rego decides per hook, using the score, signals and session state |
-| Executor | Applies the transformation a SANITISE asks for |
+| OPA policy | Rego decides per hook, using the score, signals and session state. The only stage that decides |
+| Execute | Applies the transformation a SANITISE asks for |
+| Record | Updates the session: values in an admitted tool result become untrusted, values in the prompt trusted |
 
-A hard block at any stage short-circuits to BLOCK.
+The stages before the policy only gather evidence. In the default strict mode, a
+hard block at any stage short-circuits to BLOCK.
 
 ### Sessions and the application policy layer
 
@@ -114,6 +117,23 @@ of the per-request checks, a session can:
   flow into a payment while the same IBAN read on a web page cannot.
 
 See [docs/application-policy-layer.md](docs/application-policy-layer.md).
+
+### Writing an application policy
+
+The Rego rules are the same for every deployment. An application supplies the
+data they read, in `policies/v1/data/policy_config.yaml`, and declares each
+task's scope in code:
+
+| Who | What | Where |
+|---|---|---|
+| ACF | The rules | `policies/v1/*.rego` (not edited) |
+| Developer, once per application | The tools the application may use, which of them are consequential, which argument decides where money or data goes, and which tools' output it controls | `policy_config.yaml`: `tool_allowlist`, `consequential_tools`, `sensitive_params`, `trusted_tools` |
+| Application, once per task | The task's tools, bounds on their arguments, and values the user confirmed | `fw.session(allowed_tools=..., tool_constraints=..., trusted_values=...)` |
+| Application, at each boundary | The hook calls | `on_prompt`, `on_tool_call`, `on_tool_result`, ... or a framework adapter |
+
+[`examples/banking/`](examples/banking/) is a complete worked example: a
+banking agent's policy file, and scripts showing task scope, tool-result
+screening, the provenance rule with user confirmation, and an agent loop.
 
 ---
 
@@ -201,7 +221,7 @@ fw = Firewall(enable_semantic_scan=True, semantic_backend="sentence-transformer"
 ```bash
 docker compose up -d                                  # sidecar
 docker compose --profile observability up -d          # plus an OpenTelemetry collector
-cd demo && docker compose up --build                  # six attack scenarios, no API keys
+cd demo && docker compose up --build                  # nine attack scenarios, no API keys
 ```
 
 ---
@@ -212,12 +232,12 @@ cd demo && docker compose up --build                  # six attack scenarios, no
 |---|---|
 | [`sidecar/`](sidecar/) | The Go policy decision point: IPC transport and crypto, the pipeline stages, the OPA engine, the session store, value tainting, and the hook registry |
 | [`sdk/python/`](sdk/python/) | The Python SDK: `Firewall`, `Session`, the optional semantic scanner, and framework adapters |
-| [`sdk/typescript/`](sdk/typescript/) | An early TypeScript SDK, not yet at parity with Python |
+| [`sdk/typescript/`](sdk/typescript/) | The TypeScript SDK for Node: `Firewall`, `Session`, `guardTool`, and a LangGraph.js node; same wire protocol as Python |
 | [`policies/v1/`](policies/v1/) | Rego policies, one per hook, with their unit tests, plus `data/` (thresholds, allowlists, trust settings, signal weights, the pattern library) |
 | [`config/`](config/) | Sidecar configuration (`sidecar.yaml`, with an annotated example) |
 | [`tests/integration/`](tests/integration/) | End-to-end tests against the real sidecar binary: an 80-case adversarial corpus, gap probes, forgery probes and session flows |
-| [`examples/`](examples/) | Runnable scripts showing which rule fires for each kind of input |
-| [`demo/`](demo/) | A Docker demo of six attack scenarios |
+| [`examples/`](examples/) | Runnable scripts: one hook at a time, a banking agent with its own policy, framework adapters, and the TypeScript SDK |
+| [`demo/`](demo/) | A Docker demo of nine attack scenarios, three of them in a session under the banking policy |
 | [`benchmarks/`](benchmarks/) | Replays public benchmark payloads through ACF with no model (detector catch rates) |
 | [`benchmarkv2/`](benchmarkv2/) | Evaluations for the paper: runtime overhead, InjecAgent with a live agent, AgentDojo (model-free replay and live agent), and an Agent Security Bench scaffold |
 | [`docs/`](docs/) | Architecture, design notes, threat analysis and the paper sources |
@@ -227,10 +247,10 @@ cd demo && docker compose up --build                  # six attack scenarios, no
 
 | Integration | Status |
 |---|---|
-| LangGraph — `acf.adapters.langgraph.FirewallNode` | Any hook as a graph node; accepts a `Session` for task scope |
-| Agent Kernel — `acf.adapters.agent_kernel.ACFInputGuardrail` | Input guardrail |
-| LangChain — `acf.adapters.langchain` | Placeholder |
-| TypeScript — `sdk/typescript` | Early: client and a LangGraph adapter |
+| LangChain — `acf.adapters.langchain.guard_tools` | Wraps tools so each call and result passes through ACF; with a `Session`, task scope and the provenance rule apply. Also works for LangGraph agents |
+| LangGraph — `acf.adapters.langgraph.FirewallNode` | Any hook as a graph node; accepts a `Session` |
+| Agent Kernel — `acf.adapters.agent_kernel.ACFInputGuardrail` | Input guardrail; accepts a `Session` |
+| TypeScript — `sdk/typescript` | `guardTool` for any async tool function, and `firewallNode` for LangGraph.js |
 
 ---
 
@@ -252,10 +272,10 @@ and Windows.
 
 | What | Where | Result so far |
 |---|---|---|
-| Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/) | On a Windows laptop over named pipes: an SDK hook call costs about 0.25–0.3 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. Inside the sidecar a request takes about 0.2 ms, two-thirds of it policy evaluation. Large payloads cost more: a 64 KB chunk takes about 6 ms, mostly normalisation |
+| Runtime overhead | [`benchmarkv2/overhead/`](benchmarkv2/overhead/), [`benchmarkv2/agentdojo/latency_agentdojo.py`](benchmarkv2/agentdojo/latency_agentdojo.py) | On a Windows laptop over named pipes: a plain hook call costs about 0.21–0.26 ms at p50 with the semantic scanner off, about 0.8 ms with TF-IDF and about 20 ms with a sentence-transformer. With a session, task scope and provenance tracking, on AgentDojo's payloads: 0.53 ms at p50 and 3.1 ms at p99, about 75 MB for the sidecar |
 | InjecAgent, live agent | [`benchmarkv2/injecagent/`](benchmarkv2/injecagent/) | Runs with any OpenAI-compatible model. The models tried so far resist InjecAgent on their own, so it measures model robustness more than ACF |
-| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope and 12.2% with argument tainting added. The scope blocks no legitimate call; tainting blocks 97 of 2,374. Lexical detection never fires on this attack |
-| AgentDojo, live agent | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Harness ready; not yet run |
+| AgentDojo, no model | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | A worst-case agent that obeys every injected instruction it can read, on the 609 attacked cases with reference calls. Attack success falls from 98.0% to 15.8% with a per-task tool scope, 22.2% with the provenance rule alone, and 3.1% with both. Lexical detection never fires on this attack |
+| AgentDojo, live agent | [`benchmarkv2/agentdojo/`](benchmarkv2/agentdojo/) | Three local models (Qwen3 8B, Gemma 4 26B, gpt-oss-120b), 949 attacked cases each. Undefended attack success is 11.3%, 19.6% and 37.9%; with scope and the provenance rule it is 0.8%, 1.6% and 2.7%, removing 92–93% of successful attacks for every model. The cost is 9–17 points of benign task completion, about half recovered when the user confirms destinations. A scope the model derives from the request, instead of the benchmark's reference solution, keeps the same security at a further utility cost |
 | Agent Security Bench | [`benchmarkv2/asb/`](benchmarkv2/asb/) | Harness scaffolded; upstream adapter to write |
 | Detector catch rates | [`benchmarks/`](benchmarks/) | Model-free replay of public datasets |
 
@@ -273,10 +293,16 @@ How each benchmark is run is in [`benchmarkv2/README.md`](benchmarkv2/README.md)
   detection miss paraphrased and novel attacks. Task scope and argument tainting
   do not depend on recognising an attack, which is why they carry the stronger
   claims.
-- **Tainting covers the value types it extracts**: email addresses, URLs, IBANs
-  and long numbers. A name or a paraphrased instruction is not tracked.
-- **Memory reads still trust a client-supplied integrity flag.** A proper fix
-  needs a sidecar-signed stamp and a wire protocol change.
+- **Tainting covers the value types it extracts**: email addresses, URLs and
+  their hosts (with or without a scheme), IBANs and account numbers in IBAN
+  form, and long numbers. A name or a paraphrased instruction is not tracked,
+  and an attack whose goal has no destination value, such as opening a web
+  page, is outside the provenance rule.
+- **Memory reads rely on a client-supplied integrity flag**, which the SDKs do
+  not send yet, so reads are blocked (fail closed). A proper fix needs a
+  sidecar-signed stamp and a wire protocol change.
+- **The semantic scanner runs in the agent process**, so its signals can only
+  add risk; the sidecar never lets them lower it.
 
 [docs/mitre-atlas-analysis.md](docs/mitre-atlas-analysis.md) maps coverage and
 gaps against MITRE ATLAS.
@@ -291,8 +317,9 @@ gaps against MITRE ATLAS.
 | Phase 2 | Pipeline stages | Done |
 | Phase 3 | OPA integration and Rego policies | Done |
 | Phase 4 | Integration test suite; OpenTelemetry observability | Test suite done; OpenTelemetry not started (a per-request timing log exists) |
-| v2 | Sessions, `on_tool_result`, task scope, argument tainting | Done on `feat/application-policy-layer` |
-| v2 | `on_outbound`, `on_subagent`, accumulation policies, TypeScript parity, signed memory integrity | Planned |
+| v2 | Sessions, `on_tool_result`, task scope, argument tainting | Done |
+| v2 | TypeScript SDK with sessions and tool-result screening | Done (no semantic scanner) |
+| v2 | `on_outbound`, `on_subagent`, accumulation policies, signed memory integrity | Planned |
 
 ---
 

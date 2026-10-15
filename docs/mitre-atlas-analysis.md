@@ -23,7 +23,7 @@ That framing matters because ACF-SDK does **not** try to secure every part of an
 - `on_tool_call` for agent actions before tool execution
 - `on_memory` for agent memory reads and writes
 
-These are implemented in the Python SDK at [firewall.py](/c:/Data/Projects/acf-sdk/sdk/python/acf/firewall.py) and evaluated by the sidecar pipeline centered on [pipeline.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/pipeline.go).
+These are implemented in the Python SDK at [firewall.py](../sdk/python/acf/firewall.py) and evaluated by the sidecar pipeline centered on [pipeline.go](../sidecar/internal/pipeline/pipeline.go).
 
 From an ATLAS perspective, this means ACF-SDK is primarily an **inference-time control plane** rather than a general-purpose AI security platform.
 
@@ -43,12 +43,12 @@ The repo enforces decisions through an isolated Go sidecar:
 
 Relevant files:
 
-- [main.go](/c:/Data/Projects/acf-sdk/sidecar/cmd/sidecar/main.go)
-- [listener.go](/c:/Data/Projects/acf-sdk/sidecar/internal/transport/listener.go)
-- [pipeline.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/pipeline.go)
-- [scan.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/scan.go)
-- [aggregate.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/aggregate.go)
-- [context.go](/c:/Data/Projects/acf-sdk/sidecar/pkg/riskcontext/context.go)
+- [main.go](../sidecar/cmd/sidecar/main.go)
+- [listener.go](../sidecar/internal/transport/listener.go)
+- [pipeline.go](../sidecar/internal/pipeline/pipeline.go)
+- [scan.go](../sidecar/internal/pipeline/scan.go)
+- [aggregate.go](../sidecar/internal/pipeline/aggregate.go)
+- [context.go](../sidecar/pkg/riskcontext/context.go)
 
 ### Current strengths
 
@@ -65,8 +65,8 @@ The currently wired protection comes from:
 
 The repository also contains a more ambitious policy layer:
 
-- Rego policies under [policies/v1](/c:/Data/Projects/acf-sdk/policies/v1)
-- a stubbed policy package under [engine.go](/c:/Data/Projects/acf-sdk/sidecar/internal/policy/engine.go)
+- Rego policies under [policies/v1](../policies/v1)
+- a stubbed policy package under [engine.go](../sidecar/internal/policy/engine.go)
 
 However, the current runtime path is still dominated by the Phase 2 threshold-based pipeline. In other words:
 
@@ -174,9 +174,9 @@ The hook model means access to the agent's cognition is treated as a controlled 
 
 Examples already present in the repo:
 
-- [02_block_jailbreak.py](/c:/Data/Projects/acf-sdk/examples/02_block_jailbreak.py)
-- [04_rag_sanitise.py](/c:/Data/Projects/acf-sdk/examples/04_rag_sanitise.py)
-- [07_all_hooks.py](/c:/Data/Projects/acf-sdk/examples/07_all_hooks.py)
+- [basics/01_prompt.py](../examples/basics/01_prompt.py)
+- [basics/02_context.py](../examples/basics/02_context.py)
+- [banking/04_agent_loop.py](../examples/banking/04_agent_loop.py)
 
 ### Limitations
 
@@ -236,9 +236,9 @@ ACF-SDK can reduce AI-mediated discovery attempts such as:
 
 This comes from:
 
-- the pattern library in [jailbreak_patterns.json](/c:/Data/Projects/acf-sdk/policies/v1/data/jailbreak_patterns.json)
-- tool allowlist checks in [scan.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/scan.go)
-- memory key allowlist checks in [scan.go](/c:/Data/Projects/acf-sdk/sidecar/internal/pipeline/scan.go)
+- the pattern library in [jailbreak_patterns.json](../policies/v1/data/jailbreak_patterns.json)
+- tool allowlist checks in [scan.go](../sidecar/internal/pipeline/scan.go)
+- memory key allowlist checks in [scan.go](../sidecar/internal/pipeline/scan.go)
 
 ### Limitations
 
@@ -271,7 +271,7 @@ The normalise stage is specifically built to defeat common text obfuscation:
 - zero-width character stripping
 - leetspeak cleanup
 
-This is documented in [pipeline.md](/c:/Data/Projects/acf-sdk/docs/pipeline.md) and implemented in the sidecar pipeline.
+This is documented in [pipeline.md](../docs/pipeline.md) and implemented in the sidecar pipeline.
 
 That is directly relevant to staged prompt injection because adversaries rarely send the most obvious string when they expect a scanner.
 
@@ -304,7 +304,7 @@ The `on_tool_call` hook is a major control point:
 - it can enforce allowlists
 - it can stop obviously dangerous command-like payloads if they match the scan logic and configured patterns
 
-The example at [03_block_tool.py](/c:/Data/Projects/acf-sdk/examples/03_block_tool.py) demonstrates the intended model.
+The example at [basics/03_tool_call.py](../examples/basics/03_tool_call.py) demonstrates the intended model.
 
 ### Why this matters
 
@@ -350,7 +350,7 @@ Today, the strongest implemented controls are:
 - memory key allowlists
 - provenance-aware scoring
 
-The policy design also anticipates integrity and provenance concepts for memory under [memory.rego](/c:/Data/Projects/acf-sdk/policies/v1/memory.rego), though that richer behavior is ahead of the current fully wired runtime path.
+The policy design also anticipates integrity and provenance concepts for memory under [memory.rego](../policies/v1/memory.rego), though that richer behavior is ahead of the current fully wired runtime path.
 
 ### Assessment
 
@@ -587,7 +587,7 @@ The normalise stage is a practical defense against attacker obfuscation.
 
 A malicious phrase from a user is treated differently from the same phrase in a retrieved document. That distinction is operationally useful and reflects actual agent threat models.
 
-The example in [04_rag_sanitise.py](/c:/Data/Projects/acf-sdk/examples/04_rag_sanitise.py) is the clearest demonstration of this idea.
+The example in [basics/02_context.py](../examples/basics/02_context.py) is the clearest demonstration of this idea.
 
 ---
 
@@ -694,6 +694,6 @@ Used at the right layer, it is a meaningful and well-structured defense.
 
 - MITRE ATLAS fact sheet: <https://atlas.mitre.org/pdf-files/MITRE_ATLAS_Fact_Sheet.pdf>
 - MITRE SAFE-AI report: <https://atlas.mitre.org/pdf-files/SAFEAI_Full_Report.pdf>
-- Project architecture: [architecture.md](/c:/Data/Projects/acf-sdk/docs/architecture.md)
-- Pipeline behavior: [pipeline.md](/c:/Data/Projects/acf-sdk/docs/pipeline.md)
-- Policy templates: [policies/v1/README.md](/c:/Data/Projects/acf-sdk/policies/v1/README.md)
+- Project architecture: [architecture.md](../docs/architecture.md)
+- Pipeline behavior: [pipeline.md](../docs/pipeline.md)
+- Policy templates: [policies/v1/README.md](../policies/v1/README.md)

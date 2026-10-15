@@ -12,7 +12,7 @@ Two zones separated by a hard trust boundary (OS process boundary):
 ## Language decisions
 - Sidecar: Go 1.25 (see `sidecar/go.mod`) — embeds the OPA Go SDK, single binary
 - SDK: Python 3.10+ — zero required dependencies (stdlib only); `[scanners]` extra for semantic scanning
-- SDK: TypeScript/Node 18+ — early, same wire protocol, not at parity
+- SDK: TypeScript/Node 18+ — same wire protocol and payloads as Python, sessions and `guardTool`; no semantic scanner
 - Policies: Rego (OPA) + YAML/JSON data
 
 ## IPC — wire protocol
@@ -128,8 +128,8 @@ python -m pytest benchmarkv2 benchmarks/test_run_benchmark.py
 | 2 | Pipeline stages | Done |
 | 3 | OPA integration + Rego policies | Done |
 | 4 | Integration test suite + OTel observability | Suite done; OTel not started (`internal/telemetry` has the timing log only) |
-| v2 | Sessions, on_tool_result, task scope, argument tainting | Done (`feat/application-policy-layer`) |
-| v2 | on_outbound, on_subagent, accumulation policies, TS parity, signed memory integrity | Planned |
+| v2 | Sessions, on_tool_result, task scope, argument tainting; TypeScript SDK with sessions | Done |
+| v2 | on_outbound, on_subagent, accumulation policies, signed memory integrity | Planned |
 
 Work one phase at a time unless the maintainer explicitly decides otherwise.
 

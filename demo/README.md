@@ -1,6 +1,6 @@
 # ACF-SDK Demo
 
-Run the firewall against six attack scenarios in one command. No API keys needed.
+Run the firewall against nine attack scenarios in one command. No API keys needed.
 
 ## Quick start
 
@@ -22,7 +22,10 @@ docker compose up --build
 
 ## What you'll see
 
-Six scenarios across all four firewall hooks:
+Nine scenarios. The first six screen content one call at a time; the last three
+run inside a session under the banking application policy
+([`examples/banking/policy.yaml`](../examples/banking/policy.yaml)) and show what
+content screening cannot do alone.
 
 | # | Scenario | Hook | Expected |
 |---|----------|------|----------|
@@ -32,6 +35,15 @@ Six scenarios across all four firewall hooks:
 | 4 | Poisoned RAG chunk | on_context | SANITISE |
 | 5 | Tool not on allowlist | on_tool_call | BLOCK |
 | 6 | Memory poisoning | on_memory | SANITISE |
+| 7 | Tool result carrying a known override phrase | on_tool_result | SANITISE |
+| 8 | Payment to an account read from a bill, hidden in a note no scanner flags | on_tool_call | BLOCK |
+| 9 | The same bill, after the user confirms its payee; the attacker's account stays blocked | on_tool_call | ALLOW |
+
+Scenario 8 is the one that matters most: nothing in the bill looks malicious,
+and the payment is blocked because the account came from a document, not from
+the user. The sidecar runs with the shipped rules and the banking policy data;
+see [`examples/banking/`](../examples/banking/) for the same scenarios as
+standalone scripts.
 
 These expected verdicts are encoded in `agent/main.py`, not just documented
 here. Each scenario is checked against its expected verdict, the summary table
@@ -48,7 +60,7 @@ match, and the sentence-transformer backend catches it by meaning alone.
 A single container with two processes:
 
 - **Go sidecar** — loads OPA policies, listens on a Unix Domain Socket, runs the
-  six-stage pipeline (validate, normalise, scan, aggregate, OPA, executor)
+  pipeline (validate, session, normalise, scan, aggregate, policy, execute, record)
 - **Python agent** — connects to the sidecar, runs each scenario through the
   SDK, prints decisions with timing
 

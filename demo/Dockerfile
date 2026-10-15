@@ -24,6 +24,12 @@ RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTr
 # tool allowlist and a shorter signal_weights table than the shipped config.
 COPY config/ /app/config/
 
+# Scenarios 7-9 run under the banking application policy: the shipped rules with
+# the data in examples/banking/policy.yaml. run_sidecar.py writes that policy
+# directory and a sidecar.yaml pointing at it; the entrypoint starts with it.
+COPY examples/banking/ /app/examples/banking/
+RUN python /app/examples/banking/run_sidecar.py --build-only
+
 COPY demo/agent/ ./
 COPY demo/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

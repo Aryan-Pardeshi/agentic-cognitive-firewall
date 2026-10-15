@@ -16,7 +16,9 @@ fi
 SOCKET_PATH="${ACF_SOCKET_PATH:-/tmp/acf.sock}"
 
 cd /app
-acf-sidecar &
+# The banking application policy (see the Dockerfile); scenarios 1-6 behave the
+# same under it as under the shipped policy.
+ACF_CONFIG=/app/examples/banking/.policy/sidecar.yaml acf-sidecar &
 SIDECAR_PID=$!
 
 echo "Waiting for sidecar on ${SOCKET_PATH}..."
