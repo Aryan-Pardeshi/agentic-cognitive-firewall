@@ -28,9 +28,10 @@ on_outbound exists.
 from __future__ import annotations
 
 import logging
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from ..firewall import Firewall
+from ..session import Session as ACFSession
 from ..models import Decision, SanitiseResult, FirewallError
 
 logger = logging.getLogger(__name__)
@@ -69,9 +70,13 @@ class ACFInputGuardrail(InputGuardrail if _AK_AVAILABLE else object):
     Every request in the batch is screened. A BLOCK anywhere in the batch
     rejects the whole batch; otherwise any sanitised requests have their
     prompt rewritten in place before ALLOW/OVERRIDE is returned.
+
+    Pass a Session as ``firewall`` to screen requests within one agent run:
+    the values in the user's request are then recorded as trusted, so the
+    session's provenance rule can tell them from values the agent reads later.
     """
 
-    def __init__(self, firewall: Optional[Firewall] = None, **kwargs):
+    def __init__(self, firewall: Optional[Union[Firewall, ACFSession]] = None, **kwargs):
         _check_ak()
         super().__init__(**kwargs)
         self._firewall = firewall or Firewall()

@@ -219,3 +219,7 @@ config/sidecar.yaml
 # Node / TypeScript
 sdk/typescript/dist/
 sdk/typescript/node_modules/
+
+# Examples: locally built sidecar and generated banking policy
+examples/.bin/
+examples/banking/.policy/

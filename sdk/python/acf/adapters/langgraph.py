@@ -44,9 +44,15 @@ class FirewallNode:
         ))
 
     Args:
-        firewall:   The Firewall instance to use.
+        firewall:   The Firewall to use, or a Session to also enforce its task
+                    scope and the provenance of argument values.
         hook:       Which hook to run. One of on_prompt, on_context,
-                    on_tool_call, on_memory.
+                    on_tool_call, on_memory, on_tool_result.
+
+    To guard the tools an agent node calls, wrap them with
+    acf.adapters.langchain.guard_tools instead: it checks every call and
+    screens every result, which a node placed before or after the agent
+    cannot do.
         input_key:  Where to read the value from in state.
         output_key: Where to write the result back. Defaults to input_key.
         on_block:   Optional callback (state, decision) -> None. Runs right

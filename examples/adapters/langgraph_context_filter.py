@@ -2,9 +2,9 @@
 LangGraph adapter — RAG context filtering
 
 Runs retrieved chunks through a FirewallNode before they reach the model.
-on_context checks each chunk on its own. Clean chunks pass through, a
-poisoned chunk gets dropped or sanitised, and whatever survives is written
-back to state for the model to use.
+on_context checks each chunk on its own. Clean chunks pass through, and a
+poisoned chunk is sanitised: its text is replaced by a redacted version, which
+is written back to state for the model to use.
 
 Unlike the prompt guard, this does not halt the graph on a bad chunk. It
 just filters the list, since one poisoned document shouldn't kill the whole
@@ -29,9 +29,10 @@ class State(TypedDict):
 
 
 def model_node(state: State) -> dict:
-    # The model only sees the chunks that made it past the filter.
-    used = len(state["documents"])
-    return {"answer": f"Answered using {used} clean chunk(s)."}
+    # The model sees the chunks after the filter, with any poisoned one redacted.
+    redacted = sum("REDACTED" in chunk for chunk in state["documents"])
+    used = len(state["documents"]) - redacted
+    return {"answer": f"Answered using {used} clean chunk(s); {redacted} redacted."}
 
 
 def build_graph():
@@ -68,7 +69,7 @@ def main():
     out = app.invoke({"documents": documents})
     print(f"  {out['answer']}\n")
 
-    print("Done. The poisoned chunk was filtered out before the model ran.")
+    print("Done. The poisoned chunk was redacted before the model ran.")
 
 
 if __name__ == "__main__":

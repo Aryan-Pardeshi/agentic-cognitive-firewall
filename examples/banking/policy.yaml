@@ -1,0 +1,23 @@
+# The banking assistant's application policy.
+#
+# This is the part of ACF a developer writes. The rules (policies/v1/*.rego) are
+# shared by every deployment; this file sets the data they read for one
+# application. run_sidecar.py merges these keys over the shipped
+# policies/v1/data/policy_config.yaml, so anything not listed here keeps its
+# shipped value. Keep each value on one line (YAML flow style).
+
+# Every tool this application may call at all. A session's task scope can only
+# narrow this list.
+tool_allowlist: [read_file, get_balance, get_most_recent_transactions, get_scheduled_transactions, send_money, update_scheduled_transaction, update_password]
+
+# Tools that can do harm with a value the agent read: the provenance rule
+# checks these.
+consequential_tools: [send_money, update_scheduled_transaction, update_password]
+
+# The argument of each consequential tool that decides where money goes. A tool
+# not listed here has every argument checked.
+sensitive_params: {send_money: [recipient], update_scheduled_transaction: [recipient]}
+
+# Tools whose output the bank controls. Values read from them are not treated
+# as untrusted, so paying an existing standing order's payee is allowed.
+trusted_tools: [get_scheduled_transactions]
