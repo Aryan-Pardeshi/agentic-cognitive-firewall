@@ -1,9 +1,9 @@
-# ACF-SDK — Agentic Cognitive Firewall
+# ACF— Agentic Cognitive Firewall
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Build](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml)
 
-ACF-SDK is an application-level policy layer for LLM agents. It checks
+ACF is an application-level policy layer for LLM agents. It checks
 everything an agent takes in and every action it is about to take — the user's
 prompt, retrieved documents, tool output, tool calls and memory — against
 policies you write as code, and returns **ALLOW**, **SANITISE** or **BLOCK**.
