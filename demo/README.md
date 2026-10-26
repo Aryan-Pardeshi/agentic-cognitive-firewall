@@ -1,4 +1,4 @@
-# ACF-SDK Demo
+# ACF Demo
 
 Run the firewall against nine attack scenarios in one command. No API keys needed.
 

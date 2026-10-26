@@ -1,4 +1,4 @@
-# ACF-SDK — v1 Rego Policy Templates
+# ACF — v1 Rego Policy Templates
 
 Default policy templates for each hook, mapped to the [ACF Policy Taxonomy Matrix](../../docs/acf_policy_matrix.pdf).
 

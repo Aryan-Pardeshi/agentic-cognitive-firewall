@@ -1,5 +1,5 @@
 """
-Agent Kernel guardrail adapter for ACF-SDK.
+Agent Kernel guardrail adapter for ACF.
 
 Integrates the ACF firewall as an InputGuardrail in Agent Kernel's guardrail
 system. Sits alongside OpenAI and Bedrock as a guardrail option — but runs

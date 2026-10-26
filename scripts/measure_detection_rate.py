@@ -9,8 +9,7 @@ before the payload hits the wire.
 Output: a markdown report showing per-payload signal diff, summary stats, and
 latency overhead.
 
-Usage:
-    cd acf-sdk
+Usage (from the repository root):
     python3 scripts/measure_detection_rate.py
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Call Hook Policy Tests
+# ACF — Tool Call Hook Policy Tests
 # Validates: tool_allowlist, network_destination, parameter_injection,
 #            shell_metacharacter, path_traversal, tool_call_threshold
 

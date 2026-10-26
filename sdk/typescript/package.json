@@ -1,7 +1,7 @@
 {
   "name": "@acf-sdk/acf",
   "version": "0.2.0",
-  "description": "Agentic Cognitive Firewall SDK for Node: the policy enforcement point, with sessions, task scope and tool-result screening",
+  "description": "Agentic Cognitive Firewall (ACF) client for Node: the policy enforcement point, with sessions, task scope and tool-result screening",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [

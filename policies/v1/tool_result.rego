@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Result Hook Policy
+# ACF — Tool Result Hook Policy
 # Scope: on_tool_result
 #
 # A tool's output is untrusted content the agent is about to read, like a

@@ -1,4 +1,4 @@
-# ACF-SDK — Prompt Hook Policy Tests
+# ACF — Prompt Hook Policy Tests
 # Validates: instruction_override, role_escalation, jailbreak_pattern,
 #            obfuscation_escalation, policy_integrity, injection_threshold
 

@@ -1,4 +1,4 @@
-# ACF-SDK — Context Hook Policy Tests
+# ACF — Context Hook Policy Tests
 # Validates: embedded_instruction, structural_anomaly, source_trust,
 #            context_risk_threshold, rag_chunk_size_limit
 

@@ -1,4 +1,4 @@
-# ACF-SDK — Memory Hook Policy Tests
+# ACF — Memory Hook Policy Tests
 # Validates: hmac_verify, hmac_stamp, provenance_tag, trust_weight,
 #            content_scan, entry_size_limit
 

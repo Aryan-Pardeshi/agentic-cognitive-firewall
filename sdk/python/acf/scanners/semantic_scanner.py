@@ -1,5 +1,5 @@
 """
-Semantic fallback scanner for the ACF-SDK scan stage.
+Semantic fallback scanner for the ACF scan stage.
 
 This module implements the embedding-based similarity detector that sits
 after the lexical scanner in the PDP pipeline.  It only fires when the

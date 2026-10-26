@@ -2,7 +2,7 @@
   "schema_version": 1,
   "frozen_at": "2026-10-10T22:01:07+01:00",
   "acf": {
-    "repository": "https://github.com/c2siorg/ACF-SDK",
+    "repository": "https://github.com/c2siorg/agentic-cognitive-firewall",
     "commit": "72677adbc54be73148780e8b3cafa7d161284167",
     "artifacts": [
       {

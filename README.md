@@ -1,7 +1,7 @@
-# ACF— Agentic Cognitive Firewall
+# ACF — Agentic Cognitive Firewall
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Build](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml/badge.svg)](https://github.com/c2siorg/acf-sdk/actions/workflows/ci.yml)
+[![Build](https://github.com/c2siorg/agentic-cognitive-firewall/actions/workflows/ci.yml/badge.svg)](https://github.com/c2siorg/agentic-cognitive-firewall/actions/workflows/ci.yml)
 
 ACF is an application-level policy layer for LLM agents. It checks
 everything an agent takes in and every action it is about to take — the user's
@@ -37,7 +37,7 @@ look benign: in an AgentDojo run whose injections were written as polite notes
 signed by the user, ACF's own lexical scanner flagged none of the 11,228 tool
 results it screened.
 
-ACF-SDK makes security a property of the application around the model instead:
+ACF makes security a property of the application around the model instead:
 
 - **Policy decides; detection only informs.** Scanners produce evidence. The
   decision rests on what the task is allowed to do, so it holds whether or not
@@ -59,7 +59,7 @@ ACF-SDK makes security a property of the application around the model instead:
 
 ## How it works
 
-![ACF-SDK architecture](docs/architecture.png)
+![ACF architecture](docs/architecture.png)
 
 Two zones separated by an operating-system process boundary:
 

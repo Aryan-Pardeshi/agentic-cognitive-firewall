@@ -1,4 +1,4 @@
-# ACF-SDK — Project context for Claude Code
+# ACF — Project context for Claude Code
 
 ## What this project is
 A framework-agnostic security firewall for LLM agents. It checks what an agent

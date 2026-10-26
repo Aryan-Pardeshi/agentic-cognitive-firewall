@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Result Policy Tests
+# ACF — Tool Result Policy Tests
 # Validates: score thresholds for untrusted tool output, and that output from
 # a configured trusted tool is not screened.
 

@@ -1,4 +1,4 @@
-# ACF-SDK — Context Hook Policy (v1)
+# ACF — Context Hook Policy (v1)
 # Scope: on_context
 # Taxonomy coverage:
 #   Detection   → embedded_instruction SANITISE, structural_anomaly BLOCK

@@ -1,4 +1,4 @@
-# ACF-SDK Implementation Log
+# ACF Implementation Log
 
 Decisions, trade-offs, and corrections recorded as they happen.
 Most recent first.

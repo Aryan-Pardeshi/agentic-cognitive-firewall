@@ -1,4 +1,4 @@
-# ACF-SDK adversarial fixtures for the on_tool_call hook
+# ACF adversarial fixtures for the on_tool_call hook
 # Drives data.acf.policy.tool, which is fail-closed (default BLOCK). Covers the
 # allowlist gate, the network-destination gate, the injection detection signals
 # (parameter_injection, shell_metacharacter, path_traversal), and the graduated

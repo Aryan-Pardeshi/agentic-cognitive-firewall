@@ -1,6 +1,6 @@
-# What is ACF-SDK?
+# What is ACF?
 
-ACF-SDK (Agentic Cognitive Firewall) is a security layer that sits between your AI agent and everything it reads or acts on.
+ACF (Agentic Cognitive Firewall) is a security layer that sits between your AI agent and everything it reads or acts on.
 
 ## The problem it solves
 
@@ -8,7 +8,7 @@ AI agents don't just take input from users — they also read from databases, to
 
 ## How it works
 
-ACF-SDK runs as two pieces:
+ACF runs as two pieces:
 
 1. **Your agent (PEP)** — a small SDK you drop into your Python agent. It intercepts payloads and forwards them for inspection over a local connection.
 

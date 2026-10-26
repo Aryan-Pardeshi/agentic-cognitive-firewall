@@ -1,4 +1,4 @@
-# ACF-SDK — Prompt Hook Policy (v1)
+# ACF — Prompt Hook Policy (v1)
 # Scope: on_prompt
 # Taxonomy coverage:
 #   Detection  → instruction_override BLOCK, role_escalation BLOCK,

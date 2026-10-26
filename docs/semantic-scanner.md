@@ -1,4 +1,4 @@
-# ACF-SDK Semantic Scanner — Implementation Reference
+# ACF Semantic Scanner — Implementation Reference
 
 The semantic scanner is an optional, SDK-side detection layer that runs **before** a payload reaches the sidecar. It converts text into a mathematical representation of meaning, compares it against a library of known attack phrases, and forwards high-confidence matches as signals inside the RiskContext. The sidecar's lexical scanner then adds its own signals on top — both sets reach the OPA policy engine together.
 

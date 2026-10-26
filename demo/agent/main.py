@@ -1,5 +1,5 @@
 """
-ACF-SDK Demo Agent
+ACF Demo Agent
 
 A minimal agent that shows ALLOW, SANITISE, and BLOCK decisions across the
 hooks. Uses no LLM (no API key needed) so the demo runs anywhere.
@@ -201,7 +201,7 @@ def format_result(result):
 
 def main():
     print(f"{BOLD}{'=' * 60}{RESET}")
-    print(f"{BOLD}  ACF-SDK DEMO — Firewall for AI Agents{RESET}")
+    print(f"{BOLD}  ACF DEMO — Firewall for AI Agents{RESET}")
     print(f"{BOLD}{'=' * 60}{RESET}")
     print()
 

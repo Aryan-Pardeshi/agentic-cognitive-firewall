@@ -144,7 +144,7 @@ Python 3.10+, Go (to build the sidecar) and the model served with tool calling
 on, for vLLM `--enable-auto-tool-choice --tool-call-parser <parser for the model>`.
 
 ```sh
-git clone https://github.com/c2siorg/acf-sdk.git && cd acf-sdk
+git clone https://github.com/c2siorg/agentic-cognitive-firewall.git && cd agentic-cognitive-firewall
 git checkout feat/agentdojo-adapter
 
 # 1. Once: venv, agentdojo, sidecar build, sidecar preflight, tests. About 2 minutes.

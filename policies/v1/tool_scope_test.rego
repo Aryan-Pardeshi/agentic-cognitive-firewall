@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Call Task Scope Tests
+# ACF — Tool Call Task Scope Tests
 # Validates: session allowed_tools and per-argument constraints, read from
 # input.state.task, on top of the global allowlist.
 

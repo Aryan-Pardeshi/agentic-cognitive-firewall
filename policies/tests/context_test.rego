@@ -1,4 +1,4 @@
-# ACF-SDK adversarial fixtures for the on_context hook
+# ACF adversarial fixtures for the on_context hook
 # Drives data.acf.policy.context with retrieved-content attack shapes: structural
 # anomalies, embedded (indirect) instructions, source-trust weighting, oversized
 # RAG chunks, and the graduated risk threshold on the effective score. Coverage

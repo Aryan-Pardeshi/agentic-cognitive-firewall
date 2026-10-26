@@ -1,4 +1,4 @@
-# ACF-SDK — Task Scope Hook Policy
+# ACF — Task Scope Hook Policy
 # Scope: on_task
 #
 # A session declares the tools it needs, the values the developer vouches

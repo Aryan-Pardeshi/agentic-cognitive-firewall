@@ -1,4 +1,4 @@
-# ACF-SDK — Memory Hook Policy (v1)
+# ACF — Memory Hook Policy (v1)
 # Scope: on_memory
 # Taxonomy coverage:
 #   Detection   → write_time_content_scan SANITISE

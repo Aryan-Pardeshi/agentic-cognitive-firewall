@@ -1,4 +1,4 @@
-"""Scan-stage modules for the ACF-SDK PDP pipeline."""
+"""Scan-stage modules for the ACF PDP pipeline."""
 
 from .backends import EmbeddingBackend, SentenceTransformerBackend, TfidfBackend
 from .calibration import (

@@ -1,4 +1,4 @@
-# ACF-SDK examples
+# ACF examples
 
 Runnable scripts that drive the real sidecar through the Python SDK. Each one
 prints every decision next to the one it expects and ends with `PASS` or `FAIL`.

@@ -1,4 +1,4 @@
-# ACF-SDK — Task Scope Policy Tests
+# ACF — Task Scope Policy Tests
 # Validates: a task scope can only narrow the global tool allowlist.
 
 package acf.policy.task_test

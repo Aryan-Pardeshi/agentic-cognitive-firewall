@@ -1,4 +1,4 @@
-# ACF-SDK Pipeline — Complete Technical Reference
+# ACF Pipeline — Complete Technical Reference
 
 This document is the definitive description of the enforcement pipeline inside the ACF sidecar — from the moment a payload arrives over IPC to the moment a decision is returned to the agent. It covers all six stages, how OPA integrates, how sanitisation works, and how to reason about decisions.
 

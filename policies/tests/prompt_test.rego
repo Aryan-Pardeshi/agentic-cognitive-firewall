@@ -1,4 +1,4 @@
-# ACF-SDK adversarial fixtures for the on_prompt hook
+# ACF adversarial fixtures for the on_prompt hook
 # Drives data.acf.policy.prompt with attacker-shaped signal sets and asserts the
 # enforced verdict. Signals mirror what the scan stage emits upstream: objects of
 # {category, score}, matching the pkg/riskcontext contract. Covers the prompt-facing

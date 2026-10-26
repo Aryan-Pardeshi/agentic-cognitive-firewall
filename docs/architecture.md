@@ -1,8 +1,8 @@
-# ACF-SDK Architecture
+# ACF Architecture
 
 ## Overview
 
-ACF-SDK (Agentic Cognitive Firewall SDK) is a framework-agnostic security layer for LLM agents. It distributes enforcement across the full agent lifecycle through explicit hook call sites rather than a single input boundary.
+ACF (Agentic Cognitive Firewall) is a framework-agnostic security layer for LLM agents. It distributes enforcement across the full agent lifecycle through explicit hook call sites rather than a single input boundary.
 
 The system is divided into two zones separated by a hard trust boundary:
 
@@ -15,7 +15,7 @@ All policy evaluation happens in the sidecar. The agent cannot reach inside it.
 
 ## System diagram
 
-![ACF-SDK architecture](architecture.png)
+![ACF architecture](architecture.png)
 
 ---
 

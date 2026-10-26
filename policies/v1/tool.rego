@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Call Hook Policy (v1)
+# ACF — Tool Call Hook Policy (v1)
 # Scope: on_tool_call
 # Taxonomy coverage:
 #   Detection   → parameter_injection BLOCK, shell_metacharacter BLOCK,

@@ -1,10 +1,10 @@
-# ACF-SDK and MITRE ATLAS
+# ACF and MITRE ATLAS
 
-This document maps ACF-SDK to the MITRE ATLAS threat model and explains, in practical terms, which attack categories the project can mitigate well, which it only partially addresses, and which remain outside its scope.
+This document maps ACF to the MITRE ATLAS threat model and explains, in practical terms, which attack categories the project can mitigate well, which it only partially addresses, and which remain outside its scope.
 
 The short version is:
 
-- ACF-SDK is strongest against **runtime, inference-time, agent-mediated attacks**
+- ACF is strongest against **runtime, inference-time, agent-mediated attacks**
 - It is especially well aligned to **prompt injection**, **indirect prompt injection**, **tool abuse**, and **memory poisoning**
 - It is not a complete defense for the full ATLAS landscape, especially for **training-time**, **model supply chain**, **model theft**, or **infrastructure-level** attacks
 
@@ -16,7 +16,7 @@ This is a feature of the architecture, not a failure of it. The project is inten
 
 MITRE describes ATLAS as a knowledge base of adversary tactics and techniques for AI-enabled systems. SAFE-AI further describes ATLAS as spanning tactics "from reconnaissance to attacks on AI and their impact."
 
-That framing matters because ACF-SDK does **not** try to secure every part of an AI system equally. Instead, it inserts enforcement at the places where an LLM agent ingests or acts on data:
+That framing matters because ACF does **not** try to secure every part of an AI system equally. Instead, it inserts enforcement at the places where an LLM agent ingests or acts on data:
 
 - `on_prompt` for direct user input
 - `on_context` for retrieved context and RAG chunks
@@ -25,11 +25,11 @@ That framing matters because ACF-SDK does **not** try to secure every part of an
 
 These are implemented in the Python SDK at [firewall.py](../sdk/python/acf/firewall.py) and evaluated by the sidecar pipeline centered on [pipeline.go](../sidecar/internal/pipeline/pipeline.go).
 
-From an ATLAS perspective, this means ACF-SDK is primarily an **inference-time control plane** rather than a general-purpose AI security platform.
+From an ATLAS perspective, this means ACF is primarily an **inference-time control plane** rather than a general-purpose AI security platform.
 
 ---
 
-## What ACF-SDK actually enforces today
+## What ACF actually enforces today
 
 The current implementation is important to understand before mapping to ATLAS.
 
@@ -79,9 +79,9 @@ That distinction matters when discussing ATLAS coverage. The repo already aligns
 
 ## ATLAS coverage summary
 
-The table below uses broad ATLAS-style categories to show where ACF-SDK helps most.
+The table below uses broad ATLAS-style categories to show where ACF helps most.
 
-| ATLAS category | How ACF-SDK helps | Coverage |
+| ATLAS category | How ACF helps | Coverage |
 |---|---|---|
 | Reconnaissance | May reduce useful probing feedback by blocking suspicious prompts or tool attempts, but does not stop adversaries from studying a public service | Low |
 | Resource Development | Does not prevent attackers from building payloads, tooling, or attack infrastructure | None |
@@ -106,9 +106,9 @@ The table below uses broad ATLAS-style categories to show where ACF-SDK helps mo
 
 ATLAS includes early-stage activity where adversaries learn about the target AI system, its boundaries, and its weaknesses.
 
-### What ACF-SDK can do
+### What ACF can do
 
-ACF-SDK can make reconnaissance less informative when the probing occurs through agent-facing channels:
+ACF can make reconnaissance less informative when the probing occurs through agent-facing channels:
 
 - direct prompt probes such as "reveal your system prompt"
 - attempts to enumerate tools by inducing the agent to call them
@@ -128,7 +128,7 @@ It does not stop:
 
 ### Assessment
 
-This is **low coverage**. ACF-SDK can reduce the usefulness of AI-facing recon, but it is not a reconnaissance defense system.
+This is **low coverage**. ACF can reduce the usefulness of AI-facing recon, but it is not a reconnaissance defense system.
 
 ---
 
@@ -136,7 +136,7 @@ This is **low coverage**. ACF-SDK can reduce the usefulness of AI-facing recon, 
 
 This covers the attacker building payloads, infrastructure, or tools before interacting with the target.
 
-### What ACF-SDK can do
+### What ACF can do
 
 Almost nothing directly. At most, it can make common payload families less effective once they reach the defended agent.
 
@@ -159,7 +159,7 @@ This is **out of scope**.
 
 For AI systems, initial access often means the attacker first gaining influence over the model or agent's reasoning path.
 
-### What ACF-SDK can do
+### What ACF can do
 
 This is one of the repo's important strengths:
 
@@ -180,7 +180,7 @@ Examples already present in the repo:
 
 ### Limitations
 
-This is not authentication or authorization for the application itself. If an attacker can access the app, ACF-SDK helps constrain what they can achieve through the agent, but it does not replace:
+This is not authentication or authorization for the application itself. If an attacker can access the app, ACF helps constrain what they can achieve through the agent, but it does not replace:
 
 - identity
 - session controls
@@ -197,9 +197,9 @@ This is **partial but meaningful coverage**. It is best described as controlling
 
 ATLAS considers attacks aimed at gaining access to the model or its behavior.
 
-### What ACF-SDK can do
+### What ACF can do
 
-ACF-SDK mediates data before it reaches the model, which reduces unsafe interactions such as:
+ACF mediates data before it reaches the model, which reduces unsafe interactions such as:
 
 - prompt attempts to reveal instructions
 - tool-mediated attempts to expand model capabilities
@@ -225,9 +225,9 @@ This is **partial coverage**. The firewall secures the **path to the model**, no
 
 Discovery in ATLAS-style workflows includes learning what resources, tools, prompts, or data are available through the AI system.
 
-### What ACF-SDK can do
+### What ACF can do
 
-ACF-SDK can reduce AI-mediated discovery attempts such as:
+ACF can reduce AI-mediated discovery attempts such as:
 
 - system prompt extraction
 - instruction extraction
@@ -257,11 +257,11 @@ This is **partial coverage** focused on AI-mediated discovery.
 
 ## 6. AI Attack Staging
 
-This is where ACF-SDK is most naturally aligned with ATLAS.
+This is where ACF is most naturally aligned with ATLAS.
 
 Attack staging often means preparing malicious inputs that alter future agent behavior without immediately causing impact.
 
-### What ACF-SDK does well
+### What ACF does well
 
 The normalise stage is specifically built to defeat common text obfuscation:
 
@@ -296,7 +296,7 @@ This is **strong coverage** for text-centric attack staging.
 
 For agent systems, execution often happens through the tools the model can invoke.
 
-### What ACF-SDK does well
+### What ACF does well
 
 The `on_tool_call` hook is a major control point:
 
@@ -322,7 +322,7 @@ If every such action is forced through `on_tool_call`, the firewall becomes an e
 
 Coverage depends on architecture discipline:
 
-- if tools bypass the hook, ACF-SDK cannot see them
+- if tools bypass the hook, ACF cannot see them
 - if allowlists are left empty, control is weaker
 - if tool semantics are complex, lexical scanning alone may be insufficient
 
@@ -336,7 +336,7 @@ This is **strong coverage** when the agent is actually wired through the hook mo
 
 Persistence in AI-enabled systems can take the form of poisoning memory, state, cached context, or other durable reasoning artifacts.
 
-### What ACF-SDK does well
+### What ACF does well
 
 The `on_memory` hook gives the system a chance to inspect values before they become trusted future context.
 
@@ -366,7 +366,7 @@ In LLM systems, privilege escalation often looks like:
 - overriding higher-priority instructions
 - coercing the agent into using tools beyond intended authority
 
-### What ACF-SDK can do
+### What ACF can do
 
 The project is clearly designed for this:
 
@@ -390,7 +390,7 @@ This is **partial coverage**. The architecture points in the right direction, bu
 
 This is one of the repo's strongest ATLAS alignments.
 
-### What ACF-SDK does well
+### What ACF does well
 
 The normalise stage directly targets common evasion strategies in text-based attacks:
 
@@ -426,9 +426,9 @@ This is **strong coverage for text-based evasion**, not a universal evasion defe
 
 Credential access in AI systems may involve coercing the agent to reveal secrets, retrieve tokens, or call tools that expose sensitive data.
 
-### What ACF-SDK can do
+### What ACF can do
 
-ACF-SDK can reduce the chance that the model is successfully manipulated into:
+ACF can reduce the chance that the model is successfully manipulated into:
 
 - revealing hidden instructions or memory
 - invoking unsafe tools
@@ -453,7 +453,7 @@ This is **partial coverage** through reduction of agent-mediated abuse.
 
 Collection refers to gathering target data for later abuse.
 
-### What ACF-SDK can do
+### What ACF can do
 
 It can help when collection depends on the defended agent:
 
@@ -463,7 +463,7 @@ It can help when collection depends on the defended agent:
 
 ### Limitations
 
-If data collection occurs outside the guarded agent workflow, ACF-SDK has little influence.
+If data collection occurs outside the guarded agent workflow, ACF has little influence.
 
 ### Assessment
 
@@ -475,7 +475,7 @@ This is **partial coverage**.
 
 Exfiltration is highly relevant for agentic systems because a compromised agent can leak data through model output, tools, or remote connectors.
 
-### What ACF-SDK can do
+### What ACF can do
 
 It helps most when exfiltration requires:
 
@@ -514,7 +514,7 @@ This is **partial to strong coverage**, highly dependent on integration discipli
 
 Impact is the final outcome of successful abuse.
 
-### What ACF-SDK can do
+### What ACF can do
 
 It reduces impact when the harmful result depends on:
 
@@ -523,7 +523,7 @@ It reduces impact when the harmful result depends on:
 - tool misuse
 - poisoned memory
 
-In other words, if the attack must pass through the agent's reasoning path, ACF-SDK can materially reduce impact.
+In other words, if the attack must pass through the agent's reasoning path, ACF can materially reduce impact.
 
 ### What it cannot do
 
@@ -544,7 +544,7 @@ This is **partial coverage** with strong value inside the agent boundary.
 
 The most important ATLAS-aligned techniques for this repo are below.
 
-| Technique family | ACF-SDK fit | Notes |
+| Technique family | ACF fit | Notes |
 |---|---|---|
 | Direct prompt injection | Strong | `on_prompt` plus lexical scan is the clearest current strength |
 | Indirect prompt injection | Strong | `on_context` is explicitly designed for poisoned RAG and untrusted external content |
@@ -560,7 +560,7 @@ The most important ATLAS-aligned techniques for this repo are below.
 
 ---
 
-## Why ACF-SDK is especially strong for prompt injection
+## Why ACF is especially strong for prompt injection
 
 MITRE SAFE-AI explicitly calls out both direct and indirect prompt injection under `AML.T005 "Prompt Injection"`. That is the attack family this repo is most obviously aligned with.
 
@@ -593,7 +593,7 @@ The example in [basics/02_context.py](../examples/basics/02_context.py) is the c
 
 ## Major gaps relative to the full ATLAS landscape
 
-ACF-SDK should not be presented as a complete ATLAS defense by itself.
+ACF should not be presented as a complete ATLAS defense by itself.
 
 Major gaps include:
 
@@ -613,7 +613,7 @@ These gaps are normal for a runtime firewall. They simply define the layer this 
 
 ## Residual risk
 
-Even in the attack families ACF-SDK covers well, residual risk remains.
+Even in the attack families ACF covers well, residual risk remains.
 
 ### 1. Novel semantic jailbreaks
 
@@ -635,9 +635,9 @@ If harmful behavior occurs primarily through model output rather than tool calls
 
 ## Recommended positioning
 
-The most accurate way to position ACF-SDK is:
+The most accurate way to position ACF is:
 
-> ACF-SDK is a Zero Trust, sidecar-based cognitive firewall for inference-time agent workflows. It is strongest against prompt injection, indirect prompt injection, tool abuse, and memory poisoning, and should be paired with broader controls for full-spectrum ATLAS coverage.
+> ACF is a Zero Trust, sidecar-based cognitive firewall for inference-time agent workflows. It is strongest against prompt injection, indirect prompt injection, tool abuse, and memory poisoning, and should be paired with broader controls for full-spectrum ATLAS coverage.
 
 That avoids both understatement and overclaiming.
 
@@ -659,7 +659,7 @@ If the goal is stronger ATLAS alignment, the most useful next steps would be:
 
 ## Final assessment
 
-ACF-SDK maps well to the part of MITRE ATLAS that matters most for modern LLM agents: the runtime path where untrusted text, retrieved content, memory, and tools meet model reasoning.
+ACF maps well to the part of MITRE ATLAS that matters most for modern LLM agents: the runtime path where untrusted text, retrieved content, memory, and tools meet model reasoning.
 
 It is not a full defense for the entire ATLAS matrix, and it does not try to be. Its value lies in making the agent's cognition itself enforceable.
 

@@ -1,4 +1,4 @@
-# ACF-SDK adversarial fixtures for the on_memory hook
+# ACF adversarial fixtures for the on_memory hook
 # Drives data.acf.policy.memory: read-time HMAC verification, write-time content
 # scan (SANITISE), and the entry-size limit. Cross-session reads and stateless
 # trust escalation are tracked gaps, listed in the PR description.

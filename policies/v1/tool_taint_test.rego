@@ -1,4 +1,4 @@
-# ACF-SDK — Tool Call Argument Taint Tests
+# ACF — Tool Call Argument Taint Tests
 # Validates: a consequential tool is blocked when a sensitive argument carries
 # a value read in untrusted content, per input.state.taint.
 

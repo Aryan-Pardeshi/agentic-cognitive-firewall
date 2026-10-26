@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "acf-sdk"
 version = "0.1.0"
-description = "Agentic Cognitive Firewall SDK — Python client"
+description = "Agentic Cognitive Firewall (ACF) — Python client"
 requires-python = ">=3.10"
 dependencies = []  # zero external dependencies — stdlib only
 

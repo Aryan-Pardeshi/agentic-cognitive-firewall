@@ -1,5 +1,5 @@
 """
-Shared Pydantic models for the ACF-SDK scan pipeline.
+Shared Pydantic models for the ACF scan pipeline.
 
 These models define the interface contracts between pipeline stages.
 They follow the conventions established in the architecture v0.2:
