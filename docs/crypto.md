@@ -125,7 +125,7 @@ The eviction goroutine exits cleanly when `Stop()` is called (sidecar shutdown c
 
 ### TTL sizing
 
-The replay window is bounded by the TTL. A nonce cannot be replayed after it expires. Since the sidecar's enforcement latency budget is 4–8ms, even a 30-second TTL is extremely conservative — any replay attempt would have to arrive within that window to hit an active entry. The default is configurable in `config/sidecar.yaml`.
+The replay window is bounded by the TTL. A nonce cannot be replayed after it expires. Since a decision takes about half a millisecond, even a 30-second TTL is extremely conservative — any replay attempt would have to arrive within that window to hit an active entry. The default is configurable in `config/sidecar.yaml`.
 
 ---
 

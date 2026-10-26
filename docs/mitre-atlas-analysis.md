@@ -637,7 +637,7 @@ If harmful behavior occurs primarily through model output rather than tool calls
 
 The most accurate way to position ACF is:
 
-> ACF is a Zero Trust, sidecar-based cognitive firewall for inference-time agent workflows. It is strongest against prompt injection, indirect prompt injection, tool abuse, and memory poisoning, and should be paired with broader controls for full-spectrum ATLAS coverage.
+> ACF is a sidecar-based policy layer for inference-time agent workflows. It is strongest against prompt injection, indirect prompt injection, tool abuse, and memory poisoning, and should be paired with broader controls for full-spectrum ATLAS coverage.
 
 That avoids both understatement and overclaiming.
 

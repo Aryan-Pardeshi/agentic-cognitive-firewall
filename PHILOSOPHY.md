@@ -1,178 +1,136 @@
-# Cognitive Firewall – Project Philosophy
+# ACF – Project Philosophy
 
-The **Cognitive Firewall** provides a security and governance layer for agentic systems by enforcing **policy-driven control over the reasoning context of AI agents**.
+ACF (Agentic Cognitive Firewall) is an application-level policy layer for LLM
+agents. It decides whether what an agent reads and what it does are permitted
+for the task at hand, and it makes that decision outside the agent, with no
+model involved.
 
-This document describes the core principles guiding the architecture, implementation, and evolution of the project.
-
----
-
-# 1. Policy-Driven Cognition
-
-Agent outputs must always be governed by **explicit, enforceable policies**.
-
-Every piece of information entering or leaving an agent — including prompts, retrieved documents, memory updates, tool outputs, and system instructions — must be validated against defined policies before it becomes part of the agent's reasoning context.
-
-The Cognitive Firewall treats **agent cognition as a policy-controlled pipeline**, where decisions are enforced through verifiable rules.
-
-Policy enforcement applies to multiple layers of the agent execution pipeline:
-
-- **Context Layer** — validation of retrieved documents and contextual inputs  
-- **Prompt Layer** — validation and sanitization of user prompts and instructions  
-- **Tool Layer** — inspection and validation of tool inputs and outputs  
-- **Memory Layer** — governance of persistent memory writes  
-- **Execution Layer** — enforcement of safe reasoning boundaries
-
-By enforcing policies at these layers, the system protects agents from prompt injection, context manipulation, memory poisoning, and unsafe tool output re-injection.
+This document describes the principles behind the architecture, the
+implementation, and how the project evolves.
 
 ---
 
-# 2. Secure by Design
+# 1. Policy Decides; Detection Only Informs
 
-Security must be built into the system architecture.
+Whether an agent may act must be decided by **explicit, enforceable policy**,
+not by guessing whether a piece of text looks malicious.
 
-The Cognitive Firewall follows a **Zero Trust model**, where all external inputs are considered untrusted by default.
-
-This means:
-
-- All context sources are validated before entering the model
-- Trust levels are explicit rather than assumed
-- Agent reasoning pipelines are observable and auditable
-- Policy violations result in deterministic enforcement decisions
-
-Security is embedded into the architecture rather than added as an afterthought.
+Attacks can be written to look harmless, and a detector, rule-based or a model,
+only recognises what it has seen before. ACF therefore treats detection as
+evidence: scanners flag known attack phrasing and score risk, and the policy
+uses that evidence alongside what it knows about the task. The decision holds
+whether or not an attack was recognised, and whether the agent was fooled,
+confused, or simply wrong.
 
 ---
 
-# 3. Minimal Overhead
+# 2. Provenance Informs, but Never Grants Authority
 
-Security controls should not significantly impact performance or developer productivity.
+Information can be a valid source of facts without being allowed to give
+orders. A retrieved document may tell the agent what a bill says; it may not
+redirect the payment.
 
-The framework is designed to introduce **minimal latency and computational overhead** using lightweight validation mechanisms such as:
-
-- rule-based pattern detection
-- heuristic risk scoring
-- structured context validation
-- selective sanitization rather than full blocking
-
-The goal is to provide **practical security that works within real-world agent workflows**.
-
----
-
-# 4. Sensible Defaults
-
-Many security requirements are common across most agentic systems.
-
-The Cognitive Firewall includes **built-in policy templates** that address common risks such as:
-
-- prompt injection attempts
-- instruction override patterns
-- sensitive data leakage
-- unsafe tool outputs
-- memory poisoning
-
-These templates provide **secure defaults**, allowing developers to adopt the framework without needing to design policies from scratch.
-
-Policies remain fully customizable.
+ACF records where each important value came from (the user, a document, a web
+page, a tool) and uses it when deciding on an action. A payment, message or
+invitation to a value read from untrusted content is blocked unless the user or
+the application vouched for it. Persistence must not raise trust either: a value
+that was untrusted when stored stays untrusted when read back.
 
 ---
 
-# 5. Policy-as-Code
+# 3. Check Every Boundary, Decide Outside the Agent
 
-Security policies should be **transparent, versionable, and programmable**.
+An agent has many entry points: the user's prompt, retrieved documents, tool
+results, and memory. It also has exit points: tool calls and memory writes.
+Each is an enforcement point.
 
-Policies are defined using a **declarative format**, allowing them to be:
+Decisions are made in a **separate process** that the agent cannot reach into.
+It assigns trust-relevant attributes, such as where a request came from, itself,
+and discards what the agent claims about them. All content arriving from outside
+the application is untrusted until policy says otherwise.
+
+---
+
+# 4. Independent of the Model
+
+Security should not depend on which model runs the agent. Teams that choose a
+small, local or open-weight model, for cost, latency or data locality, should get
+the same protection as teams using the largest models.
+
+No model is involved in an ACF decision, so the protection holds for any model
+and adds no inference cost.
+
+---
+
+# 5. Minimal Overhead
+
+Security controls should not noticeably slow an agent down. ACF uses
+lightweight mechanisms (pattern matching, risk scoring, and policy evaluation
+over a small session state) and adds about half a millisecond per check,
+against seconds for a model reply. Heavier detectors, such as embedding-based
+scanning, are optional.
+
+---
+
+# 6. General Engine, Application-Specific Policy
+
+The rules are shared by every deployment. Each application supplies the data
+they read: which tools it may use, which of them can do harm, which argument of
+each decides where money or data goes, and which sources it controls. Each task
+can narrow this further with a declared scope.
+
+Writing that policy is a real cost, and the project treats it as one: defaults
+cover common cases, and the examples show a complete application policy.
+
+---
+
+# 7. Policy-as-Code
+
+Policies are written in Rego (Open Policy Agent), kept separate from their data
+(YAML and JSON), and reloaded without restarting. They are:
 
 - version controlled
-- auditable
+- auditable and testable
 - portable across environments
-- easily extended
-
-This enables teams to manage agent governance using the same workflows they use for infrastructure and application configuration.
-
----
-
-# 6. Framework-Agnostic Design
-
-The Cognitive Firewall is designed to integrate with **existing agent ecosystems** rather than replace them.
-
-The system avoids tight coupling with any single framework and instead operates as a **security layer around agent runtimes**.
-
-Primary integration targets include:
-
-- **LangGraph**
-- **Custom agent execution loops**
-- **OpenAI Agents SDK guardrails**
-
-This approach allows the firewall to function across diverse agent architectures without requiring teams to change their existing infrastructure.
+- deterministic: the same request, session state and policy always give the
+  same decision
 
 ---
 
-# 7. SDK-First Integration Model
+# 8. Framework-Agnostic Integration
 
-The initial implementation of the Cognitive Firewall is delivered as a **Python SDK with middleware hooks**.
+ACF works with existing agent frameworks rather than replacing them. Thin
+clients in Python and TypeScript call the decision process at each boundary,
+and adapters integrate with LangChain, LangGraph and Agent Kernel. A custom
+agent loop needs only a few calls.
 
-The SDK intercepts key execution points within an agent pipeline, including:
-
-- user prompt processing
-- document retrieval
-- tool execution
-- memory updates
-- model invocation
-
-These interception points allow the firewall to evaluate and sanitize context elements before they enter the agent's reasoning process.
-
----
-
-# 8. Optional Centralized Enforcement
-
-In addition to local SDK enforcement, the architecture supports an optional **Cognitive Firewall API service**.
-
-This centralized service enables:
-
-- centralized policy enforcement
-- cognitive telemetry collection
-- audit logging
-- risk score aggregation
-- governance dashboards
-
-This model allows teams to start with lightweight integration and later adopt centralized governance as their systems scale.
+Integration instruments the transitions to be governed; it does not change the
+model or the tools. The guarantee covers the operations that are routed through
+ACF.
 
 ---
 
 # 9. Observability and Accountability
 
-Agent reasoning should not be opaque.
-
-The Cognitive Firewall captures **cognitive telemetry** that enables developers and security teams to understand:
-
-- what inputs were accepted or blocked
-- why policy decisions were made
-- which sources introduce the most risk
-- how agent behavior evolves over time
-
-These insights support continuous improvement of agent safety and governance.
+Every decision should be explainable. Each decision can be traced to a rule,
+and the decision process records what was decided, why, and how long each step
+took. Richer telemetry, such as OpenTelemetry traces, is planned and must never
+slow down a decision.
 
 ---
 
-# 10. Developer-Centric Design
+# 10. Honest Claims
 
-The framework is designed for **practical adoption by developers building real-world systems**.
-
-Key priorities include:
-
-- simple integration
-- clear APIs
-- readable policies
-- minimal required configuration
-- compatibility with existing agent architectures
-
-Security tools are only effective if developers can adopt them easily.  
-The Cognitive Firewall therefore prioritizes usability alongside robustness.
+The project reports what ACF does and does not stop, measured on public
+benchmarks with the runs recorded in the repository. Limits, such as attacks
+with no destination to track, are stated alongside results.
 
 ---
 
 # Summary
 
-The Cognitive Firewall establishes a security model for agentic systems based on **policy-driven control of agent reasoning context**.
-
-By combining **secure-by-design architecture, lightweight enforcement, and framework-agnostic integration**, the project provides a foundation for building **safe, observable, and governable AI agents**.
+ACF makes agent security a property of the application around the model:
+explicit policy decides what an agent may do, provenance informs those decisions
+without granting authority, and decisions are made in an isolated process with
+no model involved. The result is protection that is deterministic, inexpensive,
+and independent of the model running the agent.

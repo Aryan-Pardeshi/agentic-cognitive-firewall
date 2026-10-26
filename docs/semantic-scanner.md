@@ -62,7 +62,7 @@ fw = Firewall(
 | `tfidf` | Word frequency + dimensionality reduction | Moderate — catches near-exact variants | ~0.28 ms/call | scikit-learn only |
 | `sentence-transformer` | Neural network trained on sentence meaning | High — catches paraphrased and novel attacks | ~1.49 ms/call (ONNX Runtime) · ~7.70 ms/call (PyTorch) | sentence-transformers |
 
-For production use with sentence-transformer, use ONNX Runtime. The raw PyTorch backend at ~7.70 ms/call exceeds the 4–8 ms end-to-end latency budget on its own. ONNX Runtime runs the same model at ~1.49 ms/call.
+For production use with sentence-transformer, use ONNX Runtime. The raw PyTorch backend at ~7.70 ms/call costs many times a whole ACF decision (about 0.5 ms with the scanner off). ONNX Runtime runs the same model at ~1.49 ms/call.
 
 ---
 
@@ -255,7 +255,7 @@ Measured against Vibhor's adversarial corpus from PR #57.
 | TF-IDF (threshold 0.85) | 12 / 47 (26%) | 1 / 11 (9%) | +0.28 ms/call |
 | Sentence-transformer (threshold 0.50) | 20 / 47 (43%) | 0 / 11 (0%) | +1.49 ms/call (ONNX) |
 
-The sentence-transformer backend provides 67% more attack coverage with zero false positives at the measured threshold. Both backends operate well within the 4–8 ms end-to-end latency budget when sentence-transformer uses ONNX Runtime.
+The sentence-transformer backend provides 67% more attack coverage with zero false positives at the measured threshold. With ONNX Runtime, both backends add little to a decision that otherwise takes about 0.5 ms.
 
 Gap classes the semantic scanner does not close (documented in adversarial corpus):
 - Multilingual attacks — pattern library is English only

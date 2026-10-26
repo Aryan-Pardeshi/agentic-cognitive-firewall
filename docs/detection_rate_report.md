@@ -172,6 +172,6 @@ The sentence-transformer backend (`paraphrase-multilingual-MiniLM-L12-v2`) shoul
 cleaner separation between attacks and benign text, allowing the
 threshold to drop to 0.70 or lower. That upgrade is the next PR.
 
-Latency overhead with TF-IDF is minimal and sits well inside the
-4-8 ms end-to-end budget.
+Latency overhead with TF-IDF is minimal: about 0.5 ms per call
+on top of a sub-millisecond decision.
 
